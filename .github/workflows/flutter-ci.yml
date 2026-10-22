@@ -7,7 +7,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: flutter-ci-${{ github.ref }}
+  group: almasnaa-ci-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -23,6 +23,7 @@ jobs:
         with:
           channel: stable
           cache: true
+          cache-dependency-path: pubspec.lock
 
       - name: Show Flutter version
         run: flutter --version
@@ -34,13 +35,7 @@ jobs:
         run: flutter analyze
 
       - name: Run Flutter tests
-        shell: bash
-        run: |
-          if [ -d test ] && find test -type f -name '*_test.dart' -print -quit | grep -q .; then
-            flutter test
-          else
-            echo "No Flutter test files found; skipping flutter test."
-          fi
+        run: flutter test
 
   build-android:
     name: Build Android APK
@@ -64,12 +59,13 @@ jobs:
         with:
           channel: stable
           cache: true
+          cache-dependency-path: pubspec.lock
 
-      - name: Check required Supabase client configuration
+      - name: Verify Supabase client configuration
         shell: bash
         run: |
           if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_ANON_KEY" ]; then
-            echo "::error::Add SUPABASE_URL and SUPABASE_ANON_KEY under GitHub Settings > Secrets and variables > Actions > Variables."
+            echo "::error::Configure SUPABASE_URL and SUPABASE_ANON_KEY in Settings > Secrets and variables > Actions > Variables."
             exit 1
           fi
 
@@ -78,12 +74,12 @@ jobs:
 
       - name: Build release APK
         shell: bash
-        run: >-
-          flutter build apk --release
-          --dart-define=SUPABASE_URL="$SUPABASE_URL"
-          --dart-define=SUPABASE_ANON_KEY="$SUPABASE_ANON_KEY"
+        run: |
+          flutter build apk --release \
+            --dart-define=SUPABASE_URL="$SUPABASE_URL" \
+            --dart-define=SUPABASE_ANON_KEY="$SUPABASE_ANON_KEY"
 
-      - name: Upload APK
+      - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: almasnaa-android-apk
@@ -107,12 +103,13 @@ jobs:
         with:
           channel: stable
           cache: true
+          cache-dependency-path: pubspec.lock
 
-      - name: Check required Supabase client configuration
+      - name: Verify Supabase client configuration
         shell: bash
         run: |
           if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_ANON_KEY" ]; then
-            echo "::error::Add SUPABASE_URL and SUPABASE_ANON_KEY under GitHub Settings > Secrets and variables > Actions > Variables."
+            echo "::error::Configure SUPABASE_URL and SUPABASE_ANON_KEY in Settings > Secrets and variables > Actions > Variables."
             exit 1
           fi
 
@@ -121,12 +118,12 @@ jobs:
 
       - name: Build Web release
         shell: bash
-        run: >-
-          flutter build web --release
-          --dart-define=SUPABASE_URL="$SUPABASE_URL"
-          --dart-define=SUPABASE_ANON_KEY="$SUPABASE_ANON_KEY"
+        run: |
+          flutter build web --release \
+            --dart-define=SUPABASE_URL="$SUPABASE_URL" \
+            --dart-define=SUPABASE_ANON_KEY="$SUPABASE_ANON_KEY"
 
-      - name: Upload Web build
+      - name: Upload Web artifact
         uses: actions/upload-artifact@v4
         with:
           name: almasnaa-web-build
@@ -150,12 +147,13 @@ jobs:
         with:
           channel: stable
           cache: true
+          cache-dependency-path: pubspec.lock
 
-      - name: Check required Supabase client configuration
+      - name: Verify Supabase client configuration
         shell: pwsh
         run: |
           if ([string]::IsNullOrWhiteSpace($env:SUPABASE_URL) -or [string]::IsNullOrWhiteSpace($env:SUPABASE_ANON_KEY)) {
-            Write-Error "Add SUPABASE_URL and SUPABASE_ANON_KEY under GitHub Settings > Secrets and variables > Actions > Variables."
+            Write-Error "Configure SUPABASE_URL and SUPABASE_ANON_KEY in Settings > Secrets and variables > Actions > Variables."
             exit 1
           }
 
@@ -167,10 +165,10 @@ jobs:
 
       - name: Build Windows release
         shell: pwsh
-        run: >-
-          flutter build windows --release
-          --dart-define="SUPABASE_URL=$env:SUPABASE_URL"
-          --dart-define="SUPABASE_ANON_KEY=$env:SUPABASE_ANON_KEY"
+        run: |
+          flutter build windows --release `
+            "--dart-define=SUPABASE_URL=$env:SUPABASE_URL" `
+            "--dart-define=SUPABASE_ANON_KEY=$env:SUPABASE_ANON_KEY"
 
       - name: Package Windows build
         shell: pwsh
@@ -182,7 +180,7 @@ jobs:
           }
           Compress-Archive -Path "$releaseDir/*" -DestinationPath "Almasnaa-Windows.zip" -Force
 
-      - name: Upload Windows ZIP
+      - name: Upload Windows artifact
         uses: actions/upload-artifact@v4
         with:
           name: almasnaa-windows-release
