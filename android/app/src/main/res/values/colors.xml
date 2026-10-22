@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="ic_launcher_background">#FFFFFF</color>
+    <!-- لون الـ header في التطبيق (يملأ منطقة الـ Status Bar المخفية) -->
+    <color name="app_header">#4D7280</color>
+</resources>

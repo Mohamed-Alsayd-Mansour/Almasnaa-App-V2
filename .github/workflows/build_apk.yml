@@ -1,0 +1,51 @@
+name: Build Flutter APK
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. جلب كود المشروع
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # 2. ضبط إعدادات Java (الإصدار 17)
+      - name: Set up Java Development Kit (JDK)
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      # 3. إعداد بيئة عمل Flutter
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      # 4. جلب مكتبات مشروع Flutter
+      - name: Install dependencies
+        run: flutter pub get
+
+      # 5. توليد أيقونات التطبيق
+      - name: Generate Launcher Icons
+        run: dart run flutter_launcher_icons
+
+      # 6. تحديث رابط Gradle مباشرة في ملف gradle-wrapper.properties
+      - name: Update Gradle Version
+        run: |
+          sed -i 's/gradle-.*-bin.zip/gradle-8.14-bin.zip/g' android/gradle/wrapper/gradle-wrapper.properties
+
+      # 7. بناء ملف الـ APK
+      - name: Build APK
+        run: flutter build apk --release --android-skip-build-dependency-validation --dart-define=SUPABASE_URL=${{ vars.SUPABASE_URL }} --dart-define=SUPABASE_ANON_KEY=${{ vars.SUPABASE_ANON_KEY }}
+
+      # 8. رفع الـ APK المبني لتحميله من GitHub
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-apk
+          path: build/app/outputs/flutter-apk/app-release.apk

@@ -1,0 +1,44 @@
+name: Build Flutter Windows
+
+on:
+  workflow_dispatch:
+
+jobs:
+  windows:
+    name: Build Windows
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Flutter Doctor
+        run: flutter doctor -v
+
+      - name: Get Dependencies
+        run: flutter pub get
+
+      - name: Generate Launcher Icons
+        run: dart run flutter_launcher_icons
+
+      - name: Build Windows Release
+        run: flutter build windows --release --dart-define=SUPABASE_URL=${{ vars.SUPABASE_URL }} --dart-define=SUPABASE_ANON_KEY=${{ vars.SUPABASE_ANON_KEY }}
+
+      - name: Create Windows ZIP
+        shell: pwsh
+        run: |
+          Compress-Archive `
+            -Path "build/windows/x64/runner/Release/*" `
+            -DestinationPath "Almasnaa-Windows.zip"
+
+      - name: Upload Windows
+        uses: actions/upload-artifact@v4
+        with:
+          name: Windows-Release
+          path: Almasnaa-Windows.zip
