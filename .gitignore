@@ -46,3 +46,11 @@ app.*.symbols
 
 # Obfuscation
 app.*.map.json
+
+# Local credentials and production-data migration artifacts (never commit these)
+.env
+.env.*
+!.env.example
+backups/
+migration-report.json
+almasnaa-data-v1.json
