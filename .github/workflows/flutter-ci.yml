@@ -1,8 +1,6 @@
 name: Almasnaa Flutter CI and Builds
 
 on:
-  push:
-  pull_request:
   workflow_dispatch:
 
 permissions:
