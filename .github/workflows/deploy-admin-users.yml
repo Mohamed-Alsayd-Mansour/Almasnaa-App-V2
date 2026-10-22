@@ -1,0 +1,78 @@
+name: Deploy admin-users Edge Function
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "supabase/functions/admin-users/**"
+      - "supabase/config.toml"
+      - ".github/workflows/deploy-admin-users.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-admin-users-production
+  cancel-in-progress: false
+
+jobs:
+  deploy-and-smoke-test:
+    name: Deploy admin-users and verify login options
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_PROJECT_ID: ${{ vars.SUPABASE_PROJECT_ID }}
+      SUPABASE_URL: ${{ vars.SUPABASE_URL }}
+      SUPABASE_ANON_KEY: ${{ vars.SUPABASE_ANON_KEY }}
+
+    steps:
+      - name: Check required GitHub configuration
+        shell: bash
+        run: |
+          missing=0
+          for name in SUPABASE_ACCESS_TOKEN SUPABASE_PROJECT_ID SUPABASE_URL SUPABASE_ANON_KEY; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Missing GitHub setting: $name"
+              missing=1
+            fi
+          done
+          if [ "$missing" -ne 0 ]; then
+            echo "Add SUPABASE_ACCESS_TOKEN as a GitHub Actions secret; add SUPABASE_PROJECT_ID, SUPABASE_URL, and SUPABASE_ANON_KEY as Actions variables."
+            exit 1
+          fi
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Supabase CLI
+        uses: supabase/setup-cli@v3
+        with:
+          version: latest
+
+      - name: Deploy admin-users
+        run: supabase functions deploy admin-users --project-ref "$SUPABASE_PROJECT_ID"
+
+      - name: Smoke-test login options for all roles
+        shell: bash
+        run: |
+          set -euo pipefail
+          api_url="${SUPABASE_URL%/}"
+          for role in admin rassas supervisor; do
+            body="$(jq -nc --arg role "$role" '{p_role: $role}')"
+            response="$(curl --fail-with-body --silent --show-error \
+              --request POST "$api_url/rest/v1/rpc/login_options" \
+              --header "apikey: $SUPABASE_ANON_KEY" \
+              --header "Authorization: Bearer $SUPABASE_ANON_KEY" \
+              --header "Content-Type: application/json" \
+              --data "$body")"
+
+            if ! jq -e 'type == "array" and length > 0 and all(.[]; has("username") and has("login_email"))' <<< "$response" >/dev/null; then
+              echo "::error::login_options returned no valid accounts for role: $role"
+              exit 1
+            fi
+
+            count="$(jq 'length' <<< "$response")"
+            echo "login_options for $role: $count active account(s) found."
+          done
