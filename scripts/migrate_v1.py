@@ -48,12 +48,9 @@ def load_dotenv_file(path):
                 continue
             value = raw_value.strip()
             if len(value) >= 2 and value[0] == value[-1] and value[0] in ("'", '"'):
-                quote = value[0]
                 value = value[1:-1]
-                if quote == '"':
-                    value = value.replace(r"\\n", "\\n").replace(r"\\r", "\\r").replace(r'\\"', '"').replace(r"\\\\", "\\")
-            else:
-                value = re.split(r"\\s+#", value, maxsplit=1)[0].rstrip()
+            elif " #" in value:
+                value = value.split(" #", 1)[0].rstrip()
             os.environ[key] = value
 
 
