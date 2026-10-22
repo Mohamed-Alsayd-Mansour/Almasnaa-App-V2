@@ -10,10 +10,11 @@ Usage:
   python migrate_v1.py --input almasnaa-data.json [--backup-dir backups] [--report report.json]
 Local test (no Supabase, stub auth.users):  add --local-test (uses SUPABASE_DB_URL only).
 
-Properties: re-runnable (ON CONFLICT DO NOTHING on v1 UUIDs, accounts looked up first),
-one transaction (all or nothing), v1 file is copied+hashed before anything else and is never modified.
+Properties: data rows are applied in one SQL transaction; Auth accounts are created through Supabase's
+separate Admin API and are reused on retries. V1 UUIDs are preserved and duplicate data rows are skipped.
+The v1 file is copied and hashed before parsing and is never modified.
 """
-import argparse, hashlib, json, os, shutil, sys, datetime as dt
+import argparse, hashlib, json, os, re, shutil, sys, datetime as dt
 from collections import Counter, defaultdict
 import psycopg2, psycopg2.extras
 
@@ -25,6 +26,81 @@ ACCOUNTS = [
     ("الصياد",  "الصياد",  "supervisor", "SEED_PASSWORD_SAYYAD"),
 ]
 DEFAULT_LINK = ("منصور", "قدري")
+
+
+def load_dotenv_file(path):
+    """Load simple KEY=VALUE entries from a local .env file without overriding OS environment."""
+    if not os.path.isfile(path):
+        return
+    with open(path, "r", encoding="utf-8-sig") as env_file:
+        for line_no, raw_line in enumerate(env_file, start=1):
+            line = raw_line.strip()
+            if not line or line.startswith("#"):
+                continue
+            if line.startswith("export "):
+                line = line[7:].lstrip()
+            key, separator, raw_value = line.partition("=")
+            key = key.strip()
+            if not separator or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", key):
+                raise SystemExit(f"Invalid .env entry on line {line_no}; expected KEY=VALUE.")
+            # Environment variables set in the shell take precedence over .env.
+            if key in os.environ:
+                continue
+            value = raw_value.strip()
+            if len(value) >= 2 and value[0] == value[-1] and value[0] in ("'", '"'):
+                value = value[1:-1]
+            elif " #" in value:
+                value = value.split(" #", 1)[0].rstrip()
+            os.environ[key] = value
+
+
+def validate_environment(local_test):
+    required = ["SUPABASE_DB_URL"] + [account[3] for account in ACCOUNTS]
+    if not local_test:
+        required += ["SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY"]
+    missing = [name for name in required if not os.environ.get(name, "").strip()]
+    if missing:
+        raise SystemExit(
+            "Missing required values: " + ", ".join(missing) +
+            ". Copy .env.example to .env, fill the values locally, and run again. "
+            "Never commit or share .env."
+        )
+    for _, username, _, envvar in ACCOUNTS:
+        password = os.environ.get(envvar, "")
+        if len(password) < 6:
+            raise SystemExit(f"{envvar} for account {username} must be at least 6 characters.")
+
+
+def find_auth_user_id(base, key, email):
+    """Find an existing deterministic Auth user so retries can recover after a DB rollback."""
+    import requests
+
+    headers = {"apikey": key, "Authorization": f"Bearer {key}"}
+    page = 1
+    per_page = 100
+    while page <= 100:
+        response = requests.get(
+            f"{base.rstrip('/')}/auth/v1/admin/users",
+            headers=headers,
+            params={"page": page, "per_page": per_page},
+            timeout=30,
+        )
+        if response.status_code >= 300:
+            raise SystemExit(
+                "Could not inspect existing Supabase Auth users "
+                f"(HTTP {response.status_code}). Check SUPABASE_URL and "
+                "SUPABASE_SERVICE_ROLE_KEY locally; no key or response body was printed."
+            )
+        payload = response.json()
+        users = payload.get("users", []) if isinstance(payload, dict) else []
+        for user in users:
+            if str(user.get("email", "")).strip().lower() == email.lower():
+                return str(user["id"])
+        if len(users) < per_page:
+            return None
+        page += 1
+    raise SystemExit("Too many Auth users to safely locate the migration account; stop for manual review.")
+
 
 ENTRY_COLS = ["id","daily_session_id","room_id","room_name_snapshot","piece_count_snapshot","is_external","is_order",
  "merchant_name","customer_name","numbering","carpenter","service","installer","supervisor","repairer","wrap_location",
@@ -45,23 +121,54 @@ def ensure_auth_users(conn, local_test):
             ids[username] = str(row[0]); continue
         pw = os.environ.get(envvar)
         if not pw:
-            sys.exit(f"missing env var {envvar} (initial password for {username}); refusing to continue")
-        email = None
+            raise SystemExit(f"Missing {envvar} for account {username}; refusing to continue.")
+        email = f"u_{hashlib.sha1(username.encode()).hexdigest()[:12]}@almasnaa.invalid"
+
         if local_test:
-            cur.execute("insert into auth.users(email, encrypted_password) values (%s, crypt(%s, gen_salt('bf'))) returning id",
-                        (f"u_{hashlib.sha1(username.encode()).hexdigest()[:12]}@almasnaa.invalid", pw))
-            uid = str(cur.fetchone()[0])
+            cur.execute("select id from auth.users where lower(email) = lower(%s)", (email,))
+            existing_auth = cur.fetchone()
+            if existing_auth:
+                uid = str(existing_auth[0])
+            else:
+                cur.execute(
+                    "insert into auth.users(email, encrypted_password) "
+                    "values (%s, crypt(%s, gen_salt('bf'))) returning id",
+                    (email, pw),
+                )
+                uid = str(cur.fetchone()[0])
         else:
             import requests
-            base, key = os.environ["SUPABASE_URL"].rstrip("/"), os.environ["SUPABASE_SERVICE_ROLE_KEY"]
-            email = f"u_{hashlib.sha1(username.encode()).hexdigest()[:12]}@almasnaa.invalid"
-            r = requests.post(f"{base}/auth/v1/admin/users", headers={"apikey": key, "Authorization": f"Bearer {key}"},
-                              json={"email": email, "password": pw, "email_confirm": True})
-            if r.status_code >= 300:
-                sys.exit(f"auth admin API refused to create {username}: {r.status_code} {r.text[:200]}")
-            uid = r.json()["id"]
-        cur.execute("insert into public.profiles(id, username, display_name, role, must_change_password) values (%s,%s,%s,%s,%s)",
-                    (uid, username, display, role, role == "admin"))
+            base = os.environ["SUPABASE_URL"].rstrip("/")
+            key = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
+            # Auth is managed separately from the SQL transaction. Reuse a deterministic
+            # Auth account if an earlier attempt created it but rolled back the DB transaction.
+            existing_id = find_auth_user_id(base, key, email)
+            if existing_id:
+                uid = existing_id
+            else:
+                response = requests.post(
+                    f"{base}/auth/v1/admin/users",
+                    headers={"apikey": key, "Authorization": f"Bearer {key}"},
+                    json={"email": email, "password": pw, "email_confirm": True},
+                    timeout=30,
+                )
+                if response.status_code >= 300:
+                    existing_id = find_auth_user_id(base, key, email)
+                    if existing_id:
+                        uid = existing_id
+                    else:
+                        raise SystemExit(
+                            f"Supabase Auth refused to create account {username} "
+                            f"(HTTP {response.status_code}); no secret response body was printed."
+                        )
+                else:
+                    uid = str(response.json()["id"])
+
+        cur.execute(
+            "insert into public.profiles(id, username, display_name, role, must_change_password) "
+            "values (%s,%s,%s,%s,%s)",
+            (uid, username, display, role, role == "admin"),
+        )
         ids[username] = uid
     return ids
 
@@ -74,7 +181,16 @@ def main():
     ap.add_argument("--local-test", action="store_true")
     a = ap.parse_args()
 
-    raw = open(a.input, "rb").read()
+    # Load local credentials before reading the input or opening a DB connection.
+    repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    load_dotenv_file(os.path.join(repo_root, ".env"))
+    validate_environment(a.local_test)
+
+    try:
+        with open(a.input, "rb") as source_file:
+            raw = source_file.read()
+    except OSError as exc:
+        raise SystemExit(f"Cannot read input file {a.input!r}: {exc}") from exc
     sha = hashlib.sha256(raw).hexdigest()
     os.makedirs(a.backup_dir, exist_ok=True)
     bpath = os.path.join(a.backup_dir, f"almasnaa-v1-{dt.datetime.now():%Y%m%d-%H%M%S}-{sha[:8]}.json")
