@@ -336,9 +336,8 @@ class _CustomizePrintDialogState<T> extends State<_CustomizePrintDialog<T>> {
               ReorderableListView(
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
-                onReorder: (oldIndex, newIndex) {
+                onReorderItem: (oldIndex, newIndex) {
                   setState(() {
-                    if (oldIndex < newIndex) newIndex--;
                     final item = _order.removeAt(oldIndex);
                     _order.insert(newIndex, item);
                   });

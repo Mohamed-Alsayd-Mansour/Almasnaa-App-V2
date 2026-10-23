@@ -1,5 +1,4 @@
 import 'package:flutter/foundation.dart';
-import 'dart:ui' show Color;
 import 'package:flutter/services.dart';
 
 /// true عند التشغيل كتطبيق أندرويد أصلي (APK). على الويب تكون القيمة

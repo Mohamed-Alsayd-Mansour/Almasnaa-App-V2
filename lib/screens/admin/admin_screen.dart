@@ -343,7 +343,8 @@ class _AccountDialogState extends State<_AccountDialog> {
         child: SingleChildScrollView(
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             DropdownButtonFormField<String>(
-              value: _role,
+              key: ValueKey(_role),
+              initialValue: _role,
               decoration: const InputDecoration(labelText: 'الدور'),
               items: [for (final r in AppRole.values) DropdownMenuItem(value: r.dbValue, child: Text(r.label))],
               onChanged: (v) => setState(() => _role = v ?? _role),
@@ -505,7 +506,8 @@ class _OrphanEntriesTabState extends State<_OrphanEntriesTab> {
           Row(children: [
             Expanded(
               child: DropdownButtonFormField<DirectoryUser>(
-                value: _r,
+                key: ValueKey(_r),
+                initialValue: _r,
                 decoration: const InputDecoration(labelText: 'الرصيص'),
                 items: [for (final u in _rassas) DropdownMenuItem(value: u, child: Text(u.displayName))],
                 onChanged: (v) => setState(() => _r = v),
@@ -514,7 +516,8 @@ class _OrphanEntriesTabState extends State<_OrphanEntriesTab> {
             const SizedBox(width: 12),
             Expanded(
               child: DropdownButtonFormField<DirectoryUser>(
-                value: _s,
+                key: ValueKey(_s),
+                initialValue: _s,
                 decoration: const InputDecoration(labelText: 'المشرف'),
                 items: [for (final u in _supervisors) DropdownMenuItem(value: u, child: Text(u.displayName))],
                 onChanged: (v) => setState(() => _s = v),

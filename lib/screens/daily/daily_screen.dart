@@ -83,7 +83,7 @@ class _DailyScreenState extends State<DailyScreen> {
       title: 'حذف من اليومية',
       message: 'هل تريد حذف "${entry.displayName}" من اليومية الحالية؟',
     );
-    if (!confirmed) return;
+    if (!confirmed || !mounted) return;
     final error = await context.read<DailyProvider>().deleteEntry(entry.id);
     if (!mounted) return;
     if (error != null) {

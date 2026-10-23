@@ -29,8 +29,8 @@ class _EditEntryDialogState extends State<EditEntryDialog> {
       TextEditingController(text: widget.entry.numbering);
   late String? _carpenter = _nullIfEmpty(widget.entry.carpenter);
   late String? _service = _nullIfEmpty(widget.entry.service);
-  late String? _installer = _nullIfEmpty(widget.entry.installer);
-  late String? _supervisor = _nullIfEmpty(widget.entry.supervisor);
+  late final String? _installer = _nullIfEmpty(widget.entry.installer);
+  late final String? _supervisor = _nullIfEmpty(widget.entry.supervisor);
   late String? _repairer = _nullIfEmpty(widget.entry.repairer);
   late String? _wrapLocation = _nullIfEmpty(widget.entry.wrapLocation);
 

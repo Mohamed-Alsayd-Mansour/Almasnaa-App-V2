@@ -108,19 +108,20 @@ class BackupService {
     if (v is! int || v != schemaVersion) {
       throw BackupException('إصدار الملف غير مدعوم (المطلوب schemaVersion=$schemaVersion).');
     }
+    final map = decoded;
     int count(String k) {
-      final raw = decoded![k];
+      final raw = map[k];
       if (raw is! List) throw BackupException('الملف ناقص أو تالف: "$k".');
       return raw.length;
     }
 
     return BackupPreview(
-      payload: Map<String, Object?>.from(decoded),
+      payload: Map<String, Object?>.from(map),
       rooms: count('rooms'),
       people: count('people'),
       sessions: count('sessions'),
       entries: count('entries'),
-      exportedAt: decoded['exportedAt'] as String?,
+      exportedAt: map['exportedAt'] as String?,
     );
   }
 

@@ -46,8 +46,8 @@ class _FullEditDialogState extends State<_FullEditDialog> {
 
   late String? _carpenter = _nullIfEmpty(e.carpenter);
   late String? _service = _nullIfEmpty(e.service);
-  late String? _installer = _nullIfEmpty(e.installer);
-  late String? _supervisor = _nullIfEmpty(e.supervisor);
+  late final String? _installer = _nullIfEmpty(e.installer);
+  late final String? _supervisor = _nullIfEmpty(e.supervisor);
   late String? _repairer = _nullIfEmpty(e.repairer);
   late String? _wrapLocation = _nullIfEmpty(e.wrapLocation);
   late bool _hasSpecs = e.hasSpecifications;

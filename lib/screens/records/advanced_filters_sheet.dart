@@ -159,7 +159,8 @@ class _AdvancedFiltersSheetState extends State<_AdvancedFiltersSheet> {
                 names.add(_wrapLocation!);
               }
               return DropdownButtonFormField<String>(
-                value: _wrapLocation,
+                key: ValueKey(_wrapLocation),
+                initialValue: _wrapLocation,
                 isExpanded: true,
                 decoration: const InputDecoration(labelText: 'مكان اللف'),
                 items: [

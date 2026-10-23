@@ -204,7 +204,8 @@ class _AddEntryDialogState extends State<AddEntryDialog> {
                 const SizedBox(height: 14),
                 if (_isExternal)
                   DropdownButtonFormField<Room>(
-                    value: _externalRoom,
+                    key: ValueKey(_externalRoom),
+                    initialValue: _externalRoom,
                     isExpanded: true,
                     decoration: const InputDecoration(labelText: 'اسم الغرفة *'),
                     items: rooms
@@ -236,7 +237,8 @@ class _AddEntryDialogState extends State<AddEntryDialog> {
                   )
                 else
                 DropdownButtonFormField<Room>(
-                  value: _selectedRoom,
+                  key: ValueKey(_selectedRoom),
+                  initialValue: _selectedRoom,
                   isExpanded: true,
                   decoration: const InputDecoration(labelText: 'اسم الغرفة *'),
                   items: rooms

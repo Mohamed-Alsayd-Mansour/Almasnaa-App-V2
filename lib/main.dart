@@ -50,7 +50,7 @@ Future<void> main() async {
   }
 
   if (Env.isConfigured) {
-    await Supabase.initialize(url: Env.supabaseUrl, anonKey: Env.supabaseAnonKey);
+    await Supabase.initialize(url: Env.supabaseUrl, publishableKey: Env.supabaseAnonKey);
   }
 
   // 2.0: لا أسرار على الجهاز. يُحذف أي رمز GitHub قديم (بيانات 1.0 المحلية لا تُمس).

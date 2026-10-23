@@ -213,7 +213,8 @@ class _ResearchScreenState extends State<ResearchScreen> {
     return SizedBox(
       width: width,
       child: DropdownButtonFormField<String?>(
-        value: current,
+        key: ValueKey(current),
+        initialValue: current,
         isExpanded: true,
         decoration: InputDecoration(labelText: label),
         items: [
@@ -326,7 +327,8 @@ class _ResearchScreenState extends State<ResearchScreen> {
             SizedBox(
               width: 150,
               child: DropdownButtonFormField<RoomEntryStatus?>(
-                value: f.status,
+                key: ValueKey(f.status),
+                initialValue: f.status,
                 isExpanded: true,
                 decoration: const InputDecoration(labelText: 'الحالة'),
                 items: [
@@ -344,7 +346,8 @@ class _ResearchScreenState extends State<ResearchScreen> {
             SizedBox(
               width: 160,
               child: DropdownButtonFormField<ResearchShape?>(
-                value: f.shape,
+                key: ValueKey(f.shape),
+                initialValue: f.shape,
                 isExpanded: true,
                 decoration: const InputDecoration(labelText: 'الشكل'),
                 items: [
@@ -362,7 +365,8 @@ class _ResearchScreenState extends State<ResearchScreen> {
             SizedBox(
               width: 160,
               child: DropdownButtonFormField<RoomOwnership?>(
-                value: f.ownership,
+                key: ValueKey(f.ownership),
+                initialValue: f.ownership,
                 isExpanded: true,
                 decoration: const InputDecoration(labelText: 'ملكية الغرفة'),
                 items: [
@@ -381,7 +385,8 @@ class _ResearchScreenState extends State<ResearchScreen> {
               SizedBox(
                 width: 170,
                 child: DropdownButtonFormField<ResearchGroup>(
-                  value: _group,
+                  key: ValueKey(_group),
+                  initialValue: _group,
                   isExpanded: true,
                   decoration: const InputDecoration(labelText: 'التجميع حسب'),
                   items: [

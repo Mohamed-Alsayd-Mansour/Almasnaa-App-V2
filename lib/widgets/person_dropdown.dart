@@ -29,7 +29,8 @@ class PersonDropdownField extends StatelessWidget {
     if (current != null && !options.contains(current)) options.add(current);
 
     return DropdownButtonFormField<String>(
-      value: current,
+      key: ValueKey(current),
+      initialValue: current,
       isExpanded: true,
       decoration: InputDecoration(
         labelText: required ? '${role.fieldLabel} *' : role.fieldLabel,

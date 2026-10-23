@@ -80,7 +80,8 @@ class _PickSupervisorScreenState extends State<PickSupervisorScreen> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 DropdownButtonFormField<DirectoryUser>(
-                  value: _selected,
+                  key: ValueKey(_selected),
+                  initialValue: _selected,
                   decoration: const InputDecoration(
                       labelText: 'المشرف', prefixIcon: Icon(Icons.supervisor_account_outlined)),
                   items: [

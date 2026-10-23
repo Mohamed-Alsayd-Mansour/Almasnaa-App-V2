@@ -91,7 +91,7 @@ class _LoginScreenState extends State<LoginScreen> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           DropdownButtonFormField<AppRole>(
-            value: _role,
+            initialValue: _role,
             decoration: const InputDecoration(
                 labelText: 'الدور', prefixIcon: Icon(Icons.badge_outlined)),
             items: [
@@ -103,7 +103,7 @@ class _LoginScreenState extends State<LoginScreen> {
           const SizedBox(height: 14),
           DropdownButtonFormField<LoginOption>(
             key: ValueKey(_role),
-            value: _user,
+            initialValue: _user,
             decoration: InputDecoration(
               labelText: 'اسم المستخدم',
               prefixIcon: const Icon(Icons.person_outline),

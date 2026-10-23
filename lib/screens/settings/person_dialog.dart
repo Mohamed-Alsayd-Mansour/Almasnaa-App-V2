@@ -81,7 +81,8 @@ class _PersonDialogState extends State<_PersonDialog> {
               ),
               const SizedBox(height: 14),
               DropdownButtonFormField<PersonRole>(
-                value: _role,
+                key: ValueKey(_role),
+                initialValue: _role,
                 isExpanded: true,
                 decoration: const InputDecoration(labelText: 'الدور *'),
                 items: [
