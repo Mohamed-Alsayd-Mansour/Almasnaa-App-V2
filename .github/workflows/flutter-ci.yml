@@ -72,10 +72,27 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
+      - name: Generate Launcher Icons
+        run: dart run flutter_launcher_icons
+
+      - name: Set Gradle distribution URL
+        shell: bash
+        run: |
+          set -euo pipefail
+          WRAPPER_FILE="android/gradle/wrapper/gradle-wrapper.properties"
+          if [ ! -f "$WRAPPER_FILE" ]; then
+            echo "::error::Gradle wrapper file not found: $WRAPPER_FILE"
+            exit 1
+          fi
+          sed -i 's#^distributionUrl=.*#distributionUrl=https\\://services.gradle.org/distributions/gradle-8.14-bin.zip#' "$WRAPPER_FILE"
+          echo "Gradle distribution configured as:"
+          grep '^distributionUrl=' "$WRAPPER_FILE"
+
       - name: Build release APK
         shell: bash
         run: |
           flutter build apk --release \
+            --android-skip-build-dependency-validation \
             --dart-define=SUPABASE_URL="$SUPABASE_URL" \
             --dart-define=SUPABASE_ANON_KEY="$SUPABASE_ANON_KEY"
 
