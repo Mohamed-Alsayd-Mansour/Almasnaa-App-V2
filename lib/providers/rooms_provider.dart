@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 
+import '../data/supa.dart';
 import '../models/room.dart';
 import '../repositories/room_repository.dart';
 
@@ -26,15 +27,26 @@ class RoomsProvider extends ChangeNotifier {
 
   String get query => _query;
 
-  Future<void> loadRooms() async {
-    status = LoadStatus.loading;
+  /// عند تسجيل الخروج: لا تبقى بيانات المستخدم السابق في الذاكرة.
+  void reset() {
+    _allRooms = [];
+    _query = '';
+    status = LoadStatus.initial;
+    errorMessage = null;
     notifyListeners();
+  }
+
+  Future<void> loadRooms({bool silent = false}) async {
+    if (!silent) {
+      status = LoadStatus.loading;
+      notifyListeners();
+    }
     try {
       _allRooms = await _repository.getAllRooms();
       status = LoadStatus.loaded;
     } catch (e) {
-      errorMessage = 'تعذر تحميل الغرف: $e';
-      status = LoadStatus.error;
+      errorMessage = 'تعذر تحميل الغرف: ${friendlyError(e)}';
+      if (!silent || status != LoadStatus.loaded) status = LoadStatus.error;
     }
     notifyListeners();
   }
@@ -84,7 +96,7 @@ class RoomsProvider extends ChangeNotifier {
       notifyListeners();
       return null;
     } catch (e) {
-      return 'حدث خطأ أثناء حفظ الغرفة: $e';
+      return 'حدث خطأ أثناء حفظ الغرفة: ${friendlyError(e)}';
     }
   }
 
@@ -131,7 +143,7 @@ class RoomsProvider extends ChangeNotifier {
       notifyListeners();
       return null;
     } catch (e) {
-      return 'حدث خطأ أثناء تعديل الغرفة: $e';
+      return 'حدث خطأ أثناء تعديل الغرفة: ${friendlyError(e)}';
     }
   }
 
@@ -142,7 +154,7 @@ class RoomsProvider extends ChangeNotifier {
       notifyListeners();
       return null;
     } catch (e) {
-      return 'حدث خطأ أثناء حذف الغرفة: $e';
+      return 'حدث خطأ أثناء حذف الغرفة: ${friendlyError(e)}';
     }
   }
 }

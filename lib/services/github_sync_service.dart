@@ -38,7 +38,7 @@ class GithubSyncConfig {
 /// على المستودع المحدد. لا يحتاج التطبيق إلى صلاحيات GitHub أخرى.
 class GithubSyncService {
   static const defaultUser = 'Mohamed-Alsayd-Mansour';
-  static const defaultRepo = 'Almasnaa-App';
+  static const defaultRepo = 'Almasnaa-App-V2';
   static const filePath = 'cloud-sync/almasnaa-data.json';
 
   static const _kUser = 'almasnaa_sync_user';

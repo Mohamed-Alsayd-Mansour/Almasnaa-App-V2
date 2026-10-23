@@ -375,18 +375,6 @@ class _AddEntryDialogState extends State<AddEntryDialog> {
                 ),
                 const SizedBox(height: 14),
                 PersonDropdownField(
-                  role: PersonRole.installer,
-                  value: _installer,
-                  onChanged: (v) => setState(() => _installer = v),
-                ),
-                const SizedBox(height: 14),
-                PersonDropdownField(
-                  role: PersonRole.supervisor,
-                  value: _supervisor,
-                  onChanged: (v) => setState(() => _supervisor = v),
-                ),
-                const SizedBox(height: 14),
-                PersonDropdownField(
                   role: PersonRole.repairer,
                   value: _repairer,
                   onChanged: (v) => setState(() => _repairer = v),

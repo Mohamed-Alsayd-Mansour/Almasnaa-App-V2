@@ -1,7 +1,9 @@
 import 'package:flutter/painting.dart' show Color;
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../database/app_database.dart';
+import '../repositories/daily_entry_repository.dart';
+import '../repositories/person_repository.dart';
+import '../repositories/room_repository.dart';
 import '../models/daily_entry.dart';
 import '../models/daily_session.dart';
 import '../models/enums.dart';
@@ -116,17 +118,12 @@ class ResearchData {
   }
 
   static Future<ResearchData> load() async {
-    final db = AppDatabase.instance;
-    final rooms =
-        (await db.readList(AppDatabase.roomsKey)).map(Room.fromMap).toList();
-    final sessions = (await db.readList(AppDatabase.sessionsKey))
-        .map(DailySession.fromMap)
-        .toList();
-    final entries = (await db.readList(AppDatabase.entriesKey))
-        .map(DailyEntry.fromMap)
-        .toList();
-    final people =
-        (await db.readList(AppDatabase.peopleKey)).map(Person.fromMap).toList();
+    // البيانات من الخادم ضمن نطاق صلاحيات المستخدم (RLS): الأدمن يرى الكل.
+    final entryRepo = DailyEntryRepository();
+    final rooms = await RoomRepository().getAllRooms();
+    final sessions = await entryRepo.fetchAllSessions();
+    final entries = await entryRepo.fetchAllEntries();
+    final people = await PersonRepository().getAll();
     final prefs = await SharedPreferences.getInstance();
     return ResearchData(
         rooms: rooms,

@@ -15,8 +15,10 @@ import '../../services/backup_service.dart';
 import '../../utils/file_saver.dart';
 import '../../utils/platform_utils.dart';
 import '../../widgets/common_widgets.dart';
-import 'cloud_sync_card.dart';
+import '../../auth/auth_controller.dart';
+import '../../widgets/backup_password_dialog.dart';
 import 'person_dialog.dart';
+import 'sync_links_cards.dart';
 
 /// تبويب الإعدادات: النسخ الاحتياطي (تصدير/استيراد JSON)، حذف كل البيانات،
 /// وإدارة قوائم الأسماء (الخدمة، النجار، الرصيص، المشرف، الرميم، مكان اللف).
@@ -41,176 +43,118 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _export() async {
+    final password = await askBackupPassword(context, action: 'التصدير');
+    if (password == null || !mounted) return;
     setState(() => _busy = true);
-
     try {
-      final json = await _backup.buildJson();
+      final file = await _backup.export(password);
+      final bytes = Uint8List.fromList(utf8.encode(file.json));
 
-      final bytes = Uint8List.fromList(
-        utf8.encode(json),
-      );
-
-      final now = DateTime.now();
-
-      String two(int n) => n.toString().padLeft(2, '0');
-
-      final fileName =
-          'almasnaa-backup-${now.year}-${two(now.month)}-${two(now.day)}.json';
-
-      // فتح نافذة الحفظ الأصلية للنظام (تعمل على Android وiOS
-      // وWindows وLinux وmacOS والويب).
+      // نافذة الحفظ الأصلية (Android وiOS وWindows والويب). الاسم من الخادم:
+      // almasnaa-data-{الرصيص}-{المشرف}.json أو اسم نسخة كاملة للأدمن.
       final path = await FilePicker.platform.saveFile(
         dialogTitle: 'حفظ النسخة الاحتياطية',
-        fileName: fileName,
+        fileName: file.fileName,
         type: FileType.custom,
         allowedExtensions: const ['json'],
         bytes: bytes,
       );
-
-      // على بعض المنصات (خصوصًا سطح المكتب) تُعيد النافذة المسار فقط
-      // دون أن تكتب الملف فعليًا، فنكتبه هنا بأنفسنا لضمان نجاح الحفظ
-      // في كل الحالات. لا تأثير لهذا على الويب (المسار يكون null هناك
-      // لأن المتصفح هو من يتولى التنزيل مباشرة).
+      // بعض منصات سطح المكتب تُعيد المسار دون كتابة الملف.
       if (path != null) {
         await writeBytesToPath(path, bytes);
       }
-
       if (!mounted) return;
-
       if (path == null) {
-        showErrorSnackBar(
-          context,
-          'تم إلغاء عملية الحفظ.',
-        );
+        showErrorSnackBar(context, 'تم إلغاء عملية الحفظ.');
         return;
       }
-
-      showSuccessSnackBar(
-        context,
-        'تم حفظ النسخة الاحتياطية بنجاح.',
-      );
-    } catch (e, stackTrace) {
-      debugPrint('EXPORT ERROR: $e');
-      debugPrintStack(stackTrace: stackTrace);
-
-      if (!mounted) return;
-
-      showErrorSnackBar(
-        context,
-        'حدث خطأ أثناء التصدير:\n$e',
-      );
+      showSuccessSnackBar(context, 'تم حفظ النسخة الاحتياطية بنجاح.');
+    } on BackupException catch (e) {
+      if (mounted) showErrorSnackBar(context, e.message);
+    } catch (e) {
+      if (mounted) showErrorSnackBar(context, 'حدث خطأ أثناء التصدير.');
     } finally {
-      if (mounted) {
-        setState(() => _busy = false);
-      }
+      if (mounted) setState(() => _busy = false);
     }
   }
 
+  /// استيراد (الأدمن فقط): فحص الملف ← كلمة المرور ← فحص الخادم وملخص ← تأكيد ← كتابة ذرّية.
   Future<void> _import() async {
     setState(() => _busy = true);
-
     try {
       final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
         allowedExtensions: const ['json'],
         withData: true,
       );
-
       if (result == null || result.files.isEmpty) return;
-
       final bytes = result.files.single.bytes;
-
-      if (bytes == null) {
-        throw const FormatException('تعذر قراءة الملف.');
-      }
+      if (bytes == null) throw BackupException('تعذر قراءة الملف.');
 
       final preview = _backup.parse(utf8.decode(bytes));
+      if (!mounted) return;
 
+      final password = await askBackupPassword(context, action: 'الاستيراد');
+      if (password == null || !mounted) return;
+
+      final plan = await _backup.dryRun(password, preview);
       if (!mounted) return;
 
       final confirmed = await confirmDelete(
         context,
         title: 'استيراد البيانات',
         confirmLabel: 'استيراد',
-        message: 'سيتم استبدال جميع البيانات الحالية بمحتوى الملف:\n'
-            '• ${preview.rooms.length} غرفة\n'
-            '• ${preview.sessions.length} يومية\n'
-            '• ${preview.entries.length} إدخال في السجل\n'
-            '${preview.people == null ? '' : '• ${preview.people!.length} اسم في القوائم\n'}'
-            '\nلا يمكن التراجع عن هذه العملية.',
+        message: 'محتوى الملف: ${preview.rooms} غرفة، ${preview.people} اسم، '
+            '${preview.sessions} يومية، ${preview.entries} إدخال.\n\n'
+            'الجديد الذي سيُضاف فعلًا:\n'
+            '• ${plan.rooms} غرفة\n• ${plan.people} اسم\n'
+            '• ${plan.sessions} يومية\n• ${plan.entries} إدخال\n\n'
+            'السجلات الموجودة بنفس المعرّف تُتخطى ولا تُستبدل. '
+            'العملية ذرّية: إما أن تنجح كاملة أو لا يتغير شيء.',
       );
-
       if (!confirmed || !mounted) return;
 
-      await _backup.restore(preview);
-
+      final done = await _backup.apply(password, preview);
       if (!mounted) return;
-
       await _reloadAll();
-
       if (!mounted) return;
-
       showSuccessSnackBar(
         context,
-        'تم استيراد البيانات بنجاح.',
+        'تم الاستيراد: ${done.entries} إدخال، ${done.sessions} يومية، ${done.rooms} غرفة، ${done.people} اسم.',
       );
-    } on FormatException catch (e) {
-      if (mounted) {
-        showErrorSnackBar(
-          context,
-          e.message,
-        );
-      }
+    } on BackupException catch (e) {
+      if (mounted) showErrorSnackBar(context, e.message);
     } catch (e) {
-      if (mounted) {
-        showErrorSnackBar(
-          context,
-          'تعذر استيراد البيانات: $e',
-        );
-      }
+      if (mounted) showErrorSnackBar(context, 'تعذر استيراد البيانات.');
     } finally {
-      if (mounted) {
-        setState(() => _busy = false);
-      }
+      if (mounted) setState(() => _busy = false);
     }
   }
 
+  /// حذف جميع البيانات التشغيلية (الأدمن فقط). الحسابات والإعدادات وسجل التدقيق تبقى.
   Future<void> _deleteAll() async {
-    final includePeople = await showDialog<bool>(
-      context: context,
-      builder: (_) => const _DeleteAllDialog(),
+    final confirmed = await confirmDelete(
+      context,
+      title: 'حذف جميع البيانات',
+      message: 'سيتم حذف كل الغرف والأسماء واليوميات والإدخالات لجميع المستخدمين.\n'
+          'الحسابات وسجل التدقيق لا يُحذفان. لا يمكن التراجع عن هذه العملية.',
     );
-
-    if (includePeople == null || !mounted) return;
-
+    if (!confirmed || !mounted) return;
+    final password = await askBackupPassword(context, action: 'الحذف الجماعي');
+    if (password == null || !mounted) return;
     setState(() => _busy = true);
-
     try {
-      await _backup.deleteAll(
-        includePeople: includePeople,
-      );
-
+      await _backup.deleteAll(password);
       if (!mounted) return;
-
       await _reloadAll();
-
       if (!mounted) return;
-
-      showSuccessSnackBar(
-        context,
-        'تم حذف جميع البيانات.',
-      );
+      showSuccessSnackBar(context, 'تم حذف جميع البيانات.');
+    } on BackupException catch (e) {
+      if (mounted) showErrorSnackBar(context, e.message);
     } catch (e) {
-      if (mounted) {
-        showErrorSnackBar(
-          context,
-          'تعذر حذف البيانات: $e',
-        );
-      }
+      if (mounted) showErrorSnackBar(context, 'تعذر حذف البيانات.');
     } finally {
-      if (mounted) {
-        setState(() => _busy = false);
-      }
+      if (mounted) setState(() => _busy = false);
     }
   }
 
@@ -271,13 +215,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final auth = context.watch<AuthController>();
+    final isAdmin = auth.isAdmin;
+    final canEditNames = auth.isAdmin || auth.isSupervisor;
     return ListView(
       padding: const EdgeInsets.all(AppSpacing.md),
       children: [
         _SectionCard(
           title: 'البيانات والنسخ الاحتياطي',
           subtitle:
-              'صدّر كل بياناتك إلى ملف JSON للاحتفاظ بنسخة، أو استورد نسخة سابقة.',
+              isAdmin
+              ? 'صدّر البيانات إلى ملف JSON، أو استورد/احذف بعد كلمة مرور النسخ الاحتياطي.'
+              : 'صدّر بياناتك إلى ملف JSON بعد إدخال كلمة مرور النسخ الاحتياطي.',
           child: isMobileApp
               ? Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -291,8 +240,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             label: const Text('تصدير', textAlign: TextAlign.center),
                           ),
                         ),
-                        const SizedBox(width: AppSpacing.sm),
-                        Expanded(
+                        if (isAdmin) const SizedBox(width: AppSpacing.sm),
+                        if (isAdmin) Expanded(
                           child: OutlinedButton.icon(
                             onPressed: _busy ? null : _import,
                             icon: const Icon(Icons.file_upload_outlined),
@@ -301,8 +250,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         ),
                       ],
                     ),
-                    const SizedBox(height: AppSpacing.sm),
-                    OutlinedButton.icon(
+                    if (isAdmin) const SizedBox(height: AppSpacing.sm),
+                    if (isAdmin) OutlinedButton.icon(
                       style: OutlinedButton.styleFrom(
                         foregroundColor: Colors.red.shade700,
                         side: BorderSide(color: Colors.red.shade700),
@@ -323,12 +272,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       icon: const Icon(Icons.file_download_outlined),
                       label: const Text('تصدير JSON'),
                     ),
-                    OutlinedButton.icon(
+                    if (isAdmin) OutlinedButton.icon(
                       onPressed: _busy ? null : _import,
                       icon: const Icon(Icons.file_upload_outlined),
                       label: const Text('استيراد JSON'),
                     ),
-                    OutlinedButton.icon(
+                    if (isAdmin) OutlinedButton.icon(
                       style: OutlinedButton.styleFrom(
                         foregroundColor: Colors.red.shade700,
                         side: BorderSide(color: Colors.red.shade700),
@@ -341,25 +290,32 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
         ),
         const SizedBox(height: AppSpacing.md),
-        CloudSyncCard(onRestored: _reloadAll),
+        const SyncStatusCard(),
+        const SizedBox(height: AppSpacing.md),
+        const LinksCard(),
         const SizedBox(height: AppSpacing.md),
         _SectionCard(
           title: 'قوائم الأسماء',
           subtitle: isAndroidApp
               ? null
               : 'هذه القوائم تظهر كخيارات عند تسجيل غرفة في اليومية. عدّل الاسم أو دوره، أو أضف اسمًا جديدًا.',
-          trailing: ElevatedButton.icon(
-            onPressed: () => _addPerson(),
-            icon: const Icon(Icons.add),
-            label: const Text('إضافة اسم'),
-          ),
+          trailing: canEditNames
+              ? ElevatedButton.icon(
+                  onPressed: () => _addPerson(),
+                  icon: const Icon(Icons.add),
+                  label: const Text('إضافة اسم'),
+                )
+              : null,
           child: Consumer<PeopleProvider>(
             builder: (context, people, _) => Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                for (final role in PersonRole.values)
+                // الرصيص والمشرف يأتيان من حسابات الدخول واليومية، فلا قائمة أسماء لهما.
+                for (final role in PersonRole.values.where(
+                    (r) => r != PersonRole.installer && r != PersonRole.supervisor))
                   _RoleSection(
                     role: role,
+                    readOnly: !canEditNames,
                     people: people.byRole(role),
                     onAdd: () => _addPerson(role),
                     onEdit: _editPerson,
@@ -433,8 +389,10 @@ class _RoleSection extends StatelessWidget {
   final VoidCallback onAdd;
   final ValueChanged<Person> onEdit;
   final ValueChanged<Person> onDelete;
+  final bool readOnly;
 
   const _RoleSection({
+    this.readOnly = false,
     required this.role,
     required this.people,
     required this.onAdd,
@@ -475,7 +433,7 @@ class _RoleSection extends StatelessWidget {
                     ),
                   ),
                 ),
-                IconButton(
+                if (!readOnly) IconButton(
                   tooltip: 'إضافة إلى قائمة ${role.label}',
                   icon: const Icon(
                     Icons.add_circle_outline,
@@ -501,7 +459,7 @@ class _RoleSection extends StatelessWidget {
               ListTile(
                 dense: true,
                 title: Text(p.name),
-                trailing: Row(
+                trailing: readOnly ? null : Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     IconButton(
@@ -525,85 +483,6 @@ class _RoleSection extends StatelessWidget {
               ),
         ],
       ),
-    );
-  }
-}
-
-/// تأكيد مشدّد لحذف كل البيانات: يتطلب كتابة كلمة "حذف".
-/// يعيد قيمة "هل تُحذف قوائم الأسماء أيضًا"، أو null عند الإلغاء.
-class _DeleteAllDialog extends StatefulWidget {
-  const _DeleteAllDialog();
-
-  @override
-  State<_DeleteAllDialog> createState() => _DeleteAllDialogState();
-}
-
-class _DeleteAllDialogState extends State<_DeleteAllDialog> {
-  final _ctrl = TextEditingController();
-  bool _includePeople = false;
-
-  @override
-  void dispose() {
-    _ctrl.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final canDelete = _ctrl.text.trim() == 'حذف';
-
-    return AlertDialog(
-      title: const Text('حذف جميع البيانات'),
-      content: SizedBox(
-        width: 420,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'سيتم حذف كل الغرف واليوميات والسجل نهائيًا، ولا يمكن التراجع. '
-              'يُنصح بتصدير نسخة JSON قبل المتابعة.',
-            ),
-            const SizedBox(height: 8),
-            CheckboxListTile(
-              contentPadding: EdgeInsets.zero,
-              controlAffinity: ListTileControlAffinity.leading,
-              value: _includePeople,
-              onChanged: (v) => setState(
-                () => _includePeople = v ?? false,
-              ),
-              title: const Text(
-                'حذف قوائم الأسماء أيضًا',
-              ),
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: _ctrl,
-              onChanged: (_) => setState(() {}),
-              decoration: const InputDecoration(
-                labelText: 'اكتب "حذف" للتأكيد',
-              ),
-            ),
-          ],
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(null),
-          child: const Text('إلغاء'),
-        ),
-        ElevatedButton(
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.red.shade700,
-          ),
-          onPressed: canDelete
-              ? () => Navigator.of(context).pop(
-                    _includePeople,
-                  )
-              : null,
-          child: const Text('حذف الكل'),
-        ),
-      ],
     );
   }
 }

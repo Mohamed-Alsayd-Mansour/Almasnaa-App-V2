@@ -1,6 +1,7 @@
-/// حالة اليومية: نشطة أو مغلقة.
+/// حالة اليومية: مختارة حاليًا (active) أو معلّقة (paused) أو مغلقة.
 enum DailySessionStatus {
   active,
+  paused,
   closed;
 
   String get dbValue => name;
@@ -9,7 +10,8 @@ enum DailySessionStatus {
       DailySessionStatus.values.firstWhere((e) => e.name == value);
 
   String get label => switch (this) {
-        DailySessionStatus.active => 'نشطة',
+        DailySessionStatus.active => 'مختارة',
+        DailySessionStatus.paused => 'معلّقة',
         DailySessionStatus.closed => 'مغلقة',
       };
 }

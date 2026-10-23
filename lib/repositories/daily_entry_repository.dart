@@ -1,6 +1,6 @@
 import 'package:uuid/uuid.dart';
 
-import '../database/app_database.dart';
+import '../data/supa.dart';
 import '../models/daily_entry.dart';
 import '../models/daily_session.dart';
 import '../models/enums.dart';
@@ -55,37 +55,65 @@ class RecordSearchFilters {
   RecordSearchFilters clear() => const RecordSearchFilters();
 }
 
-/// مسؤول عن إدخالات الغرف داخل اليوميات (النشطة والمغلقة)، بما في ذلك
-/// إنشاؤها، تعديل بياناتها، تعديل النواقص، وبحث السجل المتقدم.
+/// مسؤول عن إدخالات الغرف داخل اليوميات (المفتوحة والمغلقة) على الخادم.
+/// ما يراه كل مستخدم وما يستطيع تعديله يحدده الخادم (RLS + حراس الصفوف)،
+/// وليس الواجهة: الرصيص في يومية مغلقة لا يملك إلا تعديل 4 حقول.
 class DailyEntryRepository {
-  final AppDatabase _db;
   final _uuid = const Uuid();
 
-  DailyEntryRepository({AppDatabase? db}) : _db = db ?? AppDatabase.instance;
-
-  Future<List<DailyEntry>> _readAllEntries() async {
-    final rows = await _db.readList(AppDatabase.entriesKey);
-    return rows.map(DailyEntry.fromMap).toList();
+  Future<List<DailyEntry>> fetchAllEntries() async {
+    final rows = await fetchAll((from, to) => supa
+        .from('daily_entries')
+        .select()
+        .order('created_at')
+        .order('id')
+        .range(from, to));
+    return rows.map((r) => DailyEntry.fromMap(fromServer(r))).toList();
   }
 
-  Future<void> _writeAllEntries(List<DailyEntry> entries) async {
-    await _db.writeList(
-      AppDatabase.entriesKey,
-      entries.map((e) => e.toMap()).toList(),
-    );
+  Future<List<DailySession>> fetchAllSessions() async {
+    final rows = await fetchAll((from, to) =>
+        supa.from('daily_sessions').select().order('id').range(from, to));
+    return rows.map((r) => DailySession.fromMap(fromServer(r))).toList();
   }
 
-  Future<List<DailySession>> _readAllSessions() async {
-    final rows = await _db.readList(AppDatabase.sessionsKey);
-    return rows.map(DailySession.fromMap).toList();
-  }
+  Future<List<DailyEntry>> _readAllEntries() => fetchAllEntries();
+  Future<List<DailySession>> _readAllSessions() => fetchAllSessions();
 
   Future<List<DailyEntry>> getEntriesForSession(String sessionId) async {
-    final entries = await _readAllEntries();
-    final filtered =
-        entries.where((e) => e.dailySessionId == sessionId).toList()
-          ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
-    return filtered;
+    final rows = await fetchAll((from, to) => supa
+        .from('daily_entries')
+        .select()
+        .eq('daily_session_id', sessionId)
+        .order('created_at')
+        .order('id')
+        .range(from, to));
+    return rows.map((r) => DailyEntry.fromMap(fromServer(r))).toList();
+  }
+
+  Future<DailyEntry> _getById(String id) async {
+    final row = await supa.from('daily_entries').select().eq('id', id).maybeSingle();
+    if (row == null) throw StateError('السجل غير موجود أو غير مصرح بالوصول إليه.');
+    return DailyEntry.fromMap(fromServer(row));
+  }
+
+  /// يرسل للخادم الحقول التي تغيّرت فقط (فيتحقق الخادم من صلاحية كل حقل على حدة).
+  Future<DailyEntry> _patch(DailyEntry before, DailyEntry after) async {
+    final b = toServer(before.toMap());
+    final a = toServer(after.toMap());
+    const skip = {'id', 'created_at', 'updated_at', 'daily_session_id'};
+    final diff = <String, Object?>{
+      for (final k in a.keys)
+        if (!skip.contains(k) && a[k] != b[k]) k: a[k],
+    };
+    if (diff.isEmpty) return before;
+    final rows = await supa
+        .from('daily_entries')
+        .update(diff)
+        .eq('id', before.id)
+        .select();
+    if (rows.isEmpty) throw StateError('لم يتم الحفظ: السجل غير موجود أو غير مصرح بتعديله.');
+    return DailyEntry.fromMap(fromServer(Map<String, dynamic>.from(rows.first)));
   }
 
   /// يضيف غرفة جديدة إلى اليومية. يأخذ عدد القطع كـ Snapshot مستقل من
@@ -102,8 +130,8 @@ class DailyEntryRepository {
     required String numbering,
     required String carpenter,
     required String service,
-    required String installer,
-    required String supervisor,
+    String installer = '',
+    String supervisor = '',
     required String repairer,
     required String deficiencies,
     String wrapLocation = '',
@@ -161,104 +189,67 @@ class DailyEntryRepository {
       lastDeficiencyUpdateAt: null,
     );
 
-    final entries = await _readAllEntries();
-    entries.add(entry);
-    await _writeAllEntries(entries);
-    return entry;
+    // المعرّف يُولَّد من العميل: إعادة المحاولة بعد انقطاع لا تكرّر الإدخال.
+    // الخادم يفرض معرّفات الرصيص والمشرف من اليومية ويرفض اليوميات المغلقة/المعلّقة.
+    await supa.from('daily_entries').upsert(
+          toServer(entry.toMap())
+            ..remove('created_at')
+            ..remove('updated_at'),
+          onConflict: 'id',
+          ignoreDuplicates: true,
+        );
+    return _getById(entry.id);
   }
 
-  /// تعديل بيانات إدخال (غير النواقص) طالما اليومية ما زالت نشطة عادة،
-  /// لكن الدالة لا تفرض ذلك؛ القرار يُترك لطبقة الحالة (Provider).
+  /// تعديل بيانات إدخال (التعديل من اليومية). الخادم هو من يقرر الصلاحية.
   Future<DailyEntry> updateEntryFields(DailyEntry entry) async {
-    final entries = await _readAllEntries();
-    final idx = entries.indexWhere((e) => e.id == entry.id);
-    if (idx == -1) {
-      throw StateError('السجل غير موجود.');
-    }
-    final updated = entry.copyWithFields();
-    entries[idx] = updated;
-    await _writeAllEntries(entries);
-    return updated;
+    final before = await _getById(entry.id);
+    return _patch(before, entry.copyWithFields());
   }
 
   Future<void> deleteEntry(String id) async {
-    final entries = await _readAllEntries();
-    entries.removeWhere((e) => e.id == id);
-    await _writeAllEntries(entries);
+    final rows = await supa.from('daily_entries').delete().eq('id', id).select('id');
+    if (rows.isEmpty) throw StateError('تعذر الحذف (السجل غير موجود أو غير مصرح).');
   }
 
-  /// المسار الوحيد المعتمد لتعديل النواقص من تبويب السجل. يعيد حساب
-  /// العدد تلقائيًا ويسجّل وقت آخر تعديل (قاعدة العمل #10، #11).
+  /// المسار الوحيد لتعديل النواقص: يعيد حساب العدد ويسجّل وقت آخر تعديل.
+  /// النواقص الأصلية لا تتغير أبدًا.
   Future<DailyEntry> updateCurrentDeficiencies({
     required String entryId,
     required String newDeficiencyText,
   }) async {
-    final entries = await _readAllEntries();
-    final idx = entries.indexWhere((e) => e.id == entryId);
-    if (idx == -1) {
-      throw StateError('السجل غير موجود.');
-    }
-    final updated = entries[idx].withUpdatedCurrentDeficiencies(newDeficiencyText);
-    entries[idx] = updated;
-    await _writeAllEntries(entries);
-    return updated;
+    final before = await _getById(entryId);
+    return _patch(before, before.withUpdatedCurrentDeficiencies(newDeficiencyText));
   }
 
-  /// تعديل نص "المشكلة" (سبب القطع الناقصة) لإدخال واحد.
   Future<DailyEntry> updateProblem({
     required String entryId,
     required String newProblem,
   }) async {
-    final entries = await _readAllEntries();
-    final idx = entries.indexWhere((e) => e.id == entryId);
-    if (idx == -1) {
-      throw StateError('السجل غير موجود.');
-    }
-    final updated = entries[idx].withUpdatedProblem(newProblem.trim());
-    entries[idx] = updated;
-    await _writeAllEntries(entries);
-    return updated;
+    final before = await _getById(entryId);
+    return _patch(before, before.withUpdatedProblem(newProblem.trim()));
   }
 
-  /// تعديل نص المواصفات لإدخال واحد (من جدول السجل مباشرة).
   Future<DailyEntry> updateSpecificationsText({
     required String entryId,
     required String newText,
   }) async {
-    final entries = await _readAllEntries();
-    final idx = entries.indexWhere((e) => e.id == entryId);
-    if (idx == -1) throw StateError('السجل غير موجود.');
-    final updated = entries[idx].withUpdatedSpecifications(newText.trim());
-    entries[idx] = updated;
-    await _writeAllEntries(entries);
-    return updated;
+    final before = await _getById(entryId);
+    return _patch(before, before.withUpdatedSpecifications(newText.trim()));
   }
 
-  /// تعديل وصف الأوردر لإدخال واحد (من جدول السجل مباشرة).
   Future<DailyEntry> updateOrderDescription({
     required String entryId,
     required String newText,
   }) async {
-    final entries = await _readAllEntries();
-    final idx = entries.indexWhere((e) => e.id == entryId);
-    if (idx == -1) throw StateError('السجل غير موجود.');
-    final updated = entries[idx].withUpdatedOrderDescription(newText.trim());
-    entries[idx] = updated;
-    await _writeAllEntries(entries);
-    return updated;
+    final before = await _getById(entryId);
+    return _patch(before, before.withUpdatedOrderDescription(newText.trim()));
   }
 
-  /// استبدال إدخال كامل بالنسخة المعدَّلة (التعديل الشامل من تبويب السجل).
-  /// تُحفظ النسخة كما هي دون أي تعديل إضافي.
+  /// التعديل الشامل (المشرف والأدمن فقط؛ يرفضه الخادم للرصيص).
   Future<DailyEntry> replaceEntry(DailyEntry entry) async {
-    final entries = await _readAllEntries();
-    final idx = entries.indexWhere((e) => e.id == entry.id);
-    if (idx == -1) {
-      throw StateError('السجل غير موجود.');
-    }
-    entries[idx] = entry;
-    await _writeAllEntries(entries);
-    return entry;
+    final before = await _getById(entry.id);
+    return _patch(before, entry);
   }
 
   /// بحث متقدم عبر كل الإدخالات، مع دمج بيانات اليومية التي ينتمي

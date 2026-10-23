@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+import '../data/supa.dart';
 import '../models/daily_entry.dart';
 import '../repositories/daily_entry_repository.dart';
 import 'rooms_provider.dart';
@@ -20,9 +21,18 @@ class RecordsProvider extends ChangeNotifier {
   List<RecordRow> results = [];
   RecordSearchFilters filters = const RecordSearchFilters();
 
+  /// عند تسجيل الخروج: لا تبقى بيانات المستخدم السابق في الذاكرة.
+  void reset() {
+    results = [];
+    filters = const RecordSearchFilters();
+    status = LoadStatus.initial;
+    errorMessage = null;
+    notifyListeners();
+  }
+
   Timer? _debounce;
 
-  Future<void> load() => _runSearch();
+  Future<void> load({bool silent = false}) => _runSearch(silent: silent);
 
   /// بحث فوري مع Debounce بسيط لتفادي إرهاق قاعدة البيانات أثناء الكتابة
   /// السريعة، مع الحفاظ على شعور "فوري" للمستخدم.
@@ -55,15 +65,17 @@ class RecordsProvider extends ChangeNotifier {
     await _runSearch();
   }
 
-  Future<void> _runSearch() async {
-    status = LoadStatus.loading;
-    notifyListeners();
+  Future<void> _runSearch({bool silent = false}) async {
+    if (!silent) {
+      status = LoadStatus.loading;
+      notifyListeners();
+    }
     try {
       results = await _repository.searchRecords(filters);
       status = LoadStatus.loaded;
     } catch (e) {
-      errorMessage = 'تعذر تنفيذ البحث: $e';
-      status = LoadStatus.error;
+      errorMessage = 'تعذر تنفيذ البحث: ${friendlyError(e)}';
+      if (!silent || status != LoadStatus.loaded) status = LoadStatus.error;
     }
     notifyListeners();
   }
@@ -91,7 +103,7 @@ class RecordsProvider extends ChangeNotifier {
       notifyListeners();
       return null;
     } catch (e) {
-      return 'تعذر تحديث النواقص: $e';
+      return 'تعذر تحديث النواقص: ${friendlyError(e)}';
     }
   }
 
@@ -118,7 +130,7 @@ class RecordsProvider extends ChangeNotifier {
       notifyListeners();
       return null;
     } catch (e) {
-      return 'تعذر تحديث المشكلة: $e';
+      return 'تعذر تحديث المشكلة: ${friendlyError(e)}';
     }
   }
 
@@ -135,7 +147,7 @@ class RecordsProvider extends ChangeNotifier {
       _replaceRow(updated);
       return null;
     } catch (e) {
-      return 'تعذر تحديث المواصفات: $e';
+      return 'تعذر تحديث المواصفات: ${friendlyError(e)}';
     }
   }
 
@@ -153,7 +165,7 @@ class RecordsProvider extends ChangeNotifier {
       _replaceRow(updated);
       return null;
     } catch (e) {
-      return 'تعذر تحديث وصف الأوردر: $e';
+      return 'تعذر تحديث وصف الأوردر: ${friendlyError(e)}';
     }
   }
 
@@ -179,7 +191,7 @@ class RecordsProvider extends ChangeNotifier {
       await _runSearch();
       return null;
     } catch (e) {
-      return 'تعذر حفظ التعديلات: $e';
+      return 'تعذر حفظ التعديلات: ${friendlyError(e)}';
     }
   }
 

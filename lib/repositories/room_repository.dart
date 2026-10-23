@@ -1,36 +1,24 @@
 import 'package:uuid/uuid.dart';
 
-import '../database/app_database.dart';
+import '../data/supa.dart';
 import '../models/room.dart';
 
-/// مسؤول عن كل عمليات القراءة/الكتابة الخاصة بتبويب "الغرف".
+/// كتالوج الغرف على الخادم. الصلاحيات (الأدمن والرصيص فقط يكتبان) مفروضة بـ RLS.
+/// حذف غرفة لا يمس لقطات الاسم والعدد في الإدخالات (room_id يصبح فارغًا فقط).
 class RoomRepository {
-  final AppDatabase _db;
   final _uuid = const Uuid();
 
-  RoomRepository({AppDatabase? db}) : _db = db ?? AppDatabase.instance;
-
-  Future<List<Room>> _readAll() async {
-    final rows = await _db.readList(AppDatabase.roomsKey);
-    return rows.map(Room.fromMap).toList();
-  }
-
-  Future<void> _writeAll(List<Room> rooms) async {
-    await _db.writeList(AppDatabase.roomsKey, rooms.map((r) => r.toMap()).toList());
-  }
-
   Future<List<Room>> getAllRooms() async {
-    final rooms = await _readAll();
-    rooms.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    final rows = await fetchAll((from, to) =>
+        supa.from('rooms').select().order('name').range(from, to));
+    final rooms = rows.map((r) => Room.fromMap(fromServer(r))).toList()
+      ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
     return rooms;
   }
 
   Future<Room?> getRoomById(String id) async {
-    final rooms = await _readAll();
-    for (final r in rooms) {
-      if (r.id == id) return r;
-    }
-    return null;
+    final row = await supa.from('rooms').select().eq('id', id).maybeSingle();
+    return row == null ? null : Room.fromMap(fromServer(row));
   }
 
   Future<Room> createRoom({
@@ -53,34 +41,36 @@ class RoomRepository {
       createdAt: now,
       updatedAt: now,
     );
-    final rooms = await _readAll();
-    rooms.add(room);
-    await _writeAll(rooms);
+    // المعرّف يُولَّد من العميل: إعادة المحاولة بعد انقطاع لا تنشئ غرفة مكررة.
+    await supa
+        .from('rooms')
+        .upsert(
+            toServer(room.toMap())
+              ..remove('created_at')
+              ..remove('updated_at'),
+            onConflict: 'id',
+            ignoreDuplicates: true);
     return room;
   }
 
-  /// تعديل بيانات الغرفة الأساسية فقط. لا يمس هذا أي Snapshot محفوظ
-  /// مسبقًا داخل سجلات اليومية أو السجل التاريخي (قاعدة العمل #14).
   Future<Room> updateRoom(Room room) async {
     final updated = room.copyWith(updatedAt: DateTime.now());
-    final rooms = await _readAll();
-    final idx = rooms.indexWhere((r) => r.id == room.id);
-    if (idx == -1) {
-      throw StateError('الغرفة غير موجودة.');
-    }
-    rooms[idx] = updated;
-    await _writeAll(rooms);
+    final map = toServer(updated.toMap())
+      ..remove('id')
+      ..remove('created_at')
+      ..remove('updated_at');
+    final rows = await supa.from('rooms').update(map).eq('id', room.id).select('id');
+    if (rows.isEmpty) throw StateError('الغرفة غير موجودة أو غير مصرح بتعديلها.');
     return updated;
   }
 
   Future<void> deleteRoom(String id) async {
-    final rooms = await _readAll();
-    rooms.removeWhere((r) => r.id == id);
-    await _writeAll(rooms);
+    final rows = await supa.from('rooms').delete().eq('id', id).select('id');
+    if (rows.isEmpty) throw StateError('تعذر حذف الغرفة (غير موجودة أو غير مصرح).');
   }
 
   Future<bool> isRoomNameTaken(String name, {String? excludingId}) async {
-    final rooms = await _readAll();
+    final rooms = await getAllRooms();
     final target = name.trim().toLowerCase();
     return rooms.any((r) =>
         r.name.trim().toLowerCase() == target &&

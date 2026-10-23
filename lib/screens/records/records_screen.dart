@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../auth/auth_controller.dart';
 import '../../core/app_theme.dart';
 import '../../providers/records_provider.dart';
 import '../../providers/rooms_provider.dart' show LoadStatus;
@@ -15,7 +16,6 @@ import '../../widgets/app_data_grid.dart';
 import '../../widgets/problem_cell.dart';
 import '../../providers/daily_provider.dart';
 import '../../models/daily_entry.dart';
-import '../../utils/password_gate.dart';
 import 'full_edit_dialog.dart';
 import '../../widgets/status_badge.dart';
 import 'advanced_filters_sheet.dart';
@@ -31,7 +31,6 @@ class _RecordsScreenState extends State<RecordsScreen> {
   final _keywordCtrl = TextEditingController();
 
   /// بعد إدخال كلمة المرور يبقى التعديل الشامل مفتوحًا حتى يُقفل يدويًا.
-  bool _unlocked = false;
 
   @override
   void initState() {
@@ -97,13 +96,9 @@ class _RecordsScreenState extends State<RecordsScreen> {
     );
   }
 
-  /// التعديل الشامل: يطلب كلمة المرور مرة واحدة ثم يفتح نافذة التعديل.
+  /// التعديل الشامل: للمشرف والأدمن فقط (الخادم يرفضه للرصيص أيضًا).
   Future<void> _fullEdit(DailyEntry entry) async {
-    if (!_unlocked) {
-      final ok = await askRecordsEditPassword(context);
-      if (!ok || !mounted) return;
-      setState(() => _unlocked = true);
-    }
+    if (!context.read<AuthController>().canFullEditRecords) return;
     final updated = await showFullEditDialog(context, entry);
     if (updated == null || !mounted) return;
     final error = await context.read<RecordsProvider>().replaceEntry(updated);
@@ -113,7 +108,7 @@ class _RecordsScreenState extends State<RecordsScreen> {
       return;
     }
     // اليومية النشطة قد تحتوي نفس السجل، فنحدّثها.
-    context.read<DailyProvider>().load();
+    context.read<DailyProvider>().load(silent: true);
     showSuccessSnackBar(context, 'تم حفظ التعديلات على السجل.');
   }
 
@@ -187,12 +182,6 @@ class _RecordsScreenState extends State<RecordsScreen> {
                       icon: const Icon(Icons.print_outlined),
                       label: const Text('طباعة السجل'),
                     ),
-                    if (_unlocked)
-                      OutlinedButton.icon(
-                        onPressed: () => setState(() => _unlocked = false),
-                        icon: const Icon(Icons.lock_outline),
-                        label: const Text('قفل التعديل الشامل'),
-                      ),
                   ],
                 ),
               );
@@ -335,14 +324,13 @@ class _RecordsScreenState extends State<RecordsScreen> {
                           ),
                           gridText('${e.currentMissingPiecesCount}'),
                           StatusBadge(status: e.status),
-                          IconButton(
-                            tooltip: 'تعديل شامل',
-                            icon: Icon(
-                              _unlocked ? Icons.edit : Icons.lock_outline,
-                              color: AppColors.primary,
-                            ),
-                            onPressed: () => _fullEdit(e),
-                          ),
+                          context.read<AuthController>().canFullEditRecords
+                              ? IconButton(
+                                  tooltip: 'تعديل شامل',
+                                  icon: const Icon(Icons.edit, color: AppColors.primary),
+                                  onPressed: () => _fullEdit(e),
+                                )
+                              : const SizedBox.shrink(),
                         ],
                       );
                     },

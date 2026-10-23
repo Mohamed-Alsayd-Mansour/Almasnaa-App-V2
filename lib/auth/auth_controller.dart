@@ -28,6 +28,11 @@ const String kOfflineError = 'تعذّر الاتصال بالخادم. تحقق
 /// يدير الجلسة والهوية والدور. كل التحقق الفعلي يتم على خادم Supabase؛
 /// هذا الكلاس يعكس نتيجته على الواجهة فقط.
 class AuthController extends ChangeNotifier {
+  AuthController({this.onSessionEnded});
+
+  /// يُستدعى عند انتهاء الجلسة لأي سبب (خروج، تعطيل، انتهاء) لتفريغ بيانات الذاكرة.
+  final VoidCallback? onSessionEnded;
+
   AuthStage stage = AuthStage.booting;
   AppUser? user;
 
@@ -50,6 +55,10 @@ class AuthController extends ChangeNotifier {
 
   /// الغرف: الأدمن والرصيص يديران، المشرف قراءة فقط.
   bool get canManageRooms => isAdmin || isRassas;
+
+  /// السجل: التعديل الشامل للمشرف والأدمن. الرصيص يعدّل 4 حقول مباشرة فقط
+  /// (المواصفات، وصف الأوردر، النواقص الحالية، المشكلة) والخادم يفرض ذلك.
+  bool get canFullEditRecords => isAdmin || isSupervisor;
 
   Future<void> init() async {
     if (!Env.isConfigured) {
@@ -241,6 +250,7 @@ class AuthController extends ChangeNotifier {
 
   void _reset({String? message}) {
     _watchdog?.cancel();
+    onSessionEnded?.call();
     user = null;
     currentSupervisorId = null;
     currentSupervisorName = null;

@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 
+import '../data/supa.dart';
 import '../models/person.dart';
 import '../repositories/person_repository.dart';
 
@@ -12,6 +13,13 @@ class PeopleProvider extends ChangeNotifier {
       : _repository = repository ?? PersonRepository();
 
   List<Person> _all = [];
+
+  /// عند تسجيل الخروج: لا تبقى بيانات المستخدم السابق في الذاكرة.
+  void reset() {
+    _all = [];
+    errorMessage = null;
+    notifyListeners();
+  }
   String? errorMessage;
 
   List<Person> get all => _all;
@@ -27,7 +35,7 @@ class PeopleProvider extends ChangeNotifier {
       _all = await _repository.getAll();
       errorMessage = null;
     } catch (e) {
-      errorMessage = 'تعذر تحميل قوائم الأسماء: $e';
+      errorMessage = 'تعذر تحميل قوائم الأسماء: ${friendlyError(e)}';
     }
     notifyListeners();
   }
@@ -48,7 +56,7 @@ class PeopleProvider extends ChangeNotifier {
       notifyListeners();
       return null;
     } catch (e) {
-      return 'تعذر حفظ الاسم: $e';
+      return 'تعذر حفظ الاسم: ${friendlyError(e)}';
     }
   }
 
@@ -69,7 +77,7 @@ class PeopleProvider extends ChangeNotifier {
       notifyListeners();
       return null;
     } catch (e) {
-      return 'تعذر تعديل الاسم: $e';
+      return 'تعذر تعديل الاسم: ${friendlyError(e)}';
     }
   }
 
@@ -80,7 +88,7 @@ class PeopleProvider extends ChangeNotifier {
       notifyListeners();
       return null;
     } catch (e) {
-      return 'تعذر حذف الاسم: $e';
+      return 'تعذر حذف الاسم: ${friendlyError(e)}';
     }
   }
 }

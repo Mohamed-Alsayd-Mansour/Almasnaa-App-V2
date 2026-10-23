@@ -195,4 +195,21 @@ ok("review list shrinks to 4", svc("select count(*) from migration_review where 
 ok("re-assigning already-owned entries changes nothing", as_user(ADMIN, "select assign_entry_owner(%s::uuid[], %s, %s)", (orph[:3], MAN, SAY))[0][0][0] == 0)
 ok("assigning to a non-supervisor is rejected", as_user(ADMIN, "select assign_entry_owner(%s::uuid[], %s, %s)", (orph[3:], MAN, R2))[1] is not None)
 
+# ---- 0005 / Phase 3: external rooms, idempotent client inserts, multi-daily behaviour used by the app
+sid = as_user(MAN, "select change_supervisor(%s)", (QAD,), keep=True)[0][0][0]; conn.commit()
+ext = as_user(MAN, "insert into daily_entries(id,daily_session_id,room_name_snapshot,piece_count_snapshot,is_external,merchant_name,installer,supervisor) values ('11111111-1111-4111-8111-111111111111',%s,'خارجية',5,true,'تاجر','x','y')", (sid,), keep=True); conn.commit()
+ok("external entry: names stay blank (v1), ownership still set by id", ext[1] is None and svc("select installer,supervisor,rassas_id::text,supervisor_id::text from daily_entries where id='11111111-1111-4111-8111-111111111111'")[0] == ("", "", MAN, QAD))
+reg = as_user(MAN, "insert into daily_entries(id,daily_session_id,room_name_snapshot,piece_count_snapshot) values ('22222222-2222-4222-8222-222222222222',%s,'داخلية',9)", (sid,), keep=True); conn.commit()
+ok("internal entry: names filled from the daily snapshot", svc("select installer,supervisor from daily_entries where id='22222222-2222-4222-8222-222222222222'")[0] == ("منصور", "قدري"))
+dup = as_user(MAN, "insert into daily_entries(id,daily_session_id,room_name_snapshot,piece_count_snapshot) values ('22222222-2222-4222-8222-222222222222',%s,'داخلية',9) on conflict (id) do nothing", (sid,), keep=True)
+ok("client retry with same id (ON CONFLICT DO NOTHING) creates no duplicate", dup[1] is None and svc("select count(*) from daily_entries where id='22222222-2222-4222-8222-222222222222'")[0][0] == 1)
+ok("inserted rows get SERVER time, not client time", svc("select created_at > now() - interval '1 minute' from daily_entries where id='22222222-2222-4222-8222-222222222222'")[0][0])
+ok("rassas diff-update of one field on an open daily works (partial payload)", as_user(MAN, "update daily_entries set problem='p' where id='22222222-2222-4222-8222-222222222222'", keep=True)[1] is None)
+conn.commit()
+ok("supervisor sees the open daily's entries but cannot insert into it", n(QAD, "select count(*) from daily_entries where daily_session_id=%s" % ("'%s'" % sid)) == 2 and as_user(QAD, "insert into daily_entries(daily_session_id,room_name_snapshot) values (%s,'z')", (sid,))[1] is not None)
+ok("supervisor sees the open daily row (for the switcher)", n(QAD, "select count(*) from daily_sessions where status in ('active','paused')") >= 1)
+as_user(MAN, "select close_session(%s)", (sid,), keep=True); conn.commit()
+ok("after close: rassas can still edit allowed field", as_user(MAN, "update daily_entries set specifications_text='s' where id='22222222-2222-4222-8222-222222222222'")[1] is None)
+ok("after close: rassas can NOT delete or edit other fields", as_user(MAN, "delete from daily_entries where id='22222222-2222-4222-8222-222222222222'")[0] == 0 and as_user(MAN, "update daily_entries set numbering='9' where id='22222222-2222-4222-8222-222222222222'")[1] is not None)
+
 print(f"\n{P} passed, {F} failed"); sys.exit(1 if F else 0)

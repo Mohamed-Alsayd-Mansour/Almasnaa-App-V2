@@ -9,6 +9,12 @@ class DailySession {
   final DateTime? endTime;
   final DailySessionStatus status;
 
+  /// معرّفات الملكية ولقطات الأسماء وقت إنشاء اليومية (ثابتة بعد الإنشاء).
+  final String? rassasId;
+  final String? supervisorId;
+  final String rassasName;
+  final String supervisorName;
+
   const DailySession({
     required this.id,
     required this.dayName,
@@ -16,9 +22,16 @@ class DailySession {
     required this.startTime,
     required this.status,
     this.endTime,
+    this.rassasId,
+    this.supervisorId,
+    this.rassasName = '',
+    this.supervisorName = '',
   });
 
   bool get isActive => status == DailySessionStatus.active;
+  bool get isPaused => status == DailySessionStatus.paused;
+  bool get isClosed => status == DailySessionStatus.closed;
+  bool get isOpen => !isClosed;
 
   DailySession copyWith({
     DateTime? endTime,
@@ -31,6 +44,10 @@ class DailySession {
       startTime: startTime,
       endTime: endTime ?? this.endTime,
       status: status ?? this.status,
+      rassasId: rassasId,
+      supervisorId: supervisorId,
+      rassasName: rassasName,
+      supervisorName: supervisorName,
     );
   }
 
@@ -55,6 +72,10 @@ class DailySession {
           ? null
           : DateTime.parse(map['end_time'] as String),
       status: DailySessionStatus.fromDb(map['status'] as String),
+      rassasId: map['rassas_id'] as String?,
+      supervisorId: map['supervisor_id'] as String?,
+      rassasName: map['rassas_name_snapshot'] as String? ?? '',
+      supervisorName: map['supervisor_name_snapshot'] as String? ?? '',
     );
   }
 }

@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../auth/auth_controller.dart';
 import '../../core/app_theme.dart';
+import '../../models/daily_session.dart';
 import '../../models/daily_entry.dart';
 import '../../providers/daily_provider.dart';
 import '../../providers/rooms_provider.dart' show LoadStatus;
@@ -33,14 +35,32 @@ class _DailyScreenState extends State<DailyScreen> {
     });
   }
 
-  Future<void> _startSession() async {
-    final error = await context.read<DailyProvider>().startSession();
+  bool _opening = false;
+
+  /// الرصيص: فتح/استئناف يومية مع مشرفه الحالي. الخادم يمنع تكرار اليومية.
+  Future<void> _openWithCurrentSupervisor() async {
+    if (_opening) return;
+    final auth = context.read<AuthController>();
+    final supId = auth.currentSupervisorId;
+    if (supId == null) {
+      showErrorSnackBar(context, 'اختر المشرف أولًا من الإعدادات ← الربط.');
+      return;
+    }
+    setState(() => _opening = true);
+    final error = await context.read<DailyProvider>().openWithSupervisor(supId);
     if (!mounted) return;
+    setState(() => _opening = false);
     if (error != null) {
       showErrorSnackBar(context, error);
     } else {
-      showSuccessSnackBar(context, 'تم بدء يومية جديدة.');
+      showSuccessSnackBar(context, 'تم فتح اليومية.');
     }
+  }
+
+  Future<void> _switchTo(String id) async {
+    final error = await context.read<DailyProvider>().selectSession(id);
+    if (!mounted) return;
+    if (error != null) showErrorSnackBar(context, error);
   }
 
   Future<void> _addEntry() async {
@@ -107,7 +127,7 @@ class _DailyScreenState extends State<DailyScreen> {
       context,
       title: 'إنهاء اليومية',
       message:
-          'سيتم إغلاق اليومية الحالية وإضافتها إلى السجل. هل تريد المتابعة؟',
+          'سيتم إنهاء اليومية المختارة وإغلاقها وإضافتها إلى السجل، ولا يمكن إعادة فتحها. هل تريد المتابعة؟',
     );
     if (!confirmed) return;
     final error = await provider.finishSession();
@@ -149,15 +169,29 @@ class _DailyScreenState extends State<DailyScreen> {
         }
 
         if (!provider.hasActiveSession) {
-          return EmptyState(
-            icon: Icons.assignment_late_outlined,
-            title: 'لا توجد يومية نشطة',
-            subtitle: 'اضغط على الزر أدناه لبدء يومية عمل جديدة.',
-            action: ElevatedButton.icon(
-              onPressed: _startSession,
-              icon: const Icon(Icons.play_arrow),
-              label: const Text('بدء يومية'),
-            ),
+          final auth = context.read<AuthController>();
+          return ListView(
+            padding: const EdgeInsets.all(AppSpacing.md),
+            children: [
+              if (provider.openSessions.isNotEmpty)
+                _SessionSwitcher(provider: provider, onSelect: _switchTo),
+              EmptyState(
+                icon: Icons.assignment_late_outlined,
+                title: 'لا توجد يومية مختارة',
+                subtitle: auth.isRassas
+                    ? (provider.openSessions.isEmpty
+                        ? 'لا توجد يوميات مفتوحة. افتح يومية مع مشرفك الحالي.'
+                        : 'اختر إحدى يومياتك المعلّقة أعلاه، أو افتح يومية مع مشرفك الحالي.')
+                    : 'لا توجد يوميات مفتوحة مسندة إليك حاليًا. اليوميات المغلقة في تبويب السجل.',
+                action: auth.isRassas
+                    ? ElevatedButton.icon(
+                        onPressed: _opening ? null : _openWithCurrentSupervisor,
+                        icon: const Icon(Icons.play_arrow),
+                        label: Text('فتح يومية مع ${auth.currentSupervisorName ?? 'المشرف'}'),
+                      )
+                    : null,
+              ),
+            ],
           );
         }
 
@@ -169,6 +203,8 @@ class _DailyScreenState extends State<DailyScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              _SessionSwitcher(provider: provider, onSelect: _switchTo),
+              const SizedBox(height: AppSpacing.sm),
               _SessionHeader(
                 dayName: session.dayName,
                 date: AppDateFormatter.date(session.date),
@@ -192,11 +228,12 @@ class _DailyScreenState extends State<DailyScreen> {
                     const SizedBox(width: AppSpacing.sm),
                     const SizedBox(width: AppSpacing.sm),
                   ],
-                  ElevatedButton.icon(
-                    onPressed: _addEntry,
-                    icon: const Icon(Icons.add),
-                    label: const Text('إضافة غرفة'),
-                  ),
+                  if (provider.canAddEntries)
+                    ElevatedButton.icon(
+                      onPressed: _addEntry,
+                      icon: const Icon(Icons.add),
+                      label: const Text('إضافة غرفة'),
+                    ),
                 ],
               ),
               const SizedBox(height: AppSpacing.sm),
@@ -303,6 +340,7 @@ class _DailyScreenState extends State<DailyScreen> {
                       ),
               ),
               const SizedBox(height: AppSpacing.md),
+              if (provider.canFinish)
               Align(
                 alignment: Alignment.centerLeft,
                 child: ElevatedButton.icon(
@@ -375,6 +413,61 @@ class _HeaderItem extends StatelessWidget {
             softWrap: false,
             style: const TextStyle(fontWeight: FontWeight.w800)),
       ],
+    );
+  }
+}
+
+
+/// مبدّل اليوميات المفتوحة: اسم المشرف المرتبط وتاريخ البدء والحالة لكل يومية.
+/// التبديل يجعل اليومية المختارة نشطة ويعلّق السابقة دون إغلاقها.
+class _SessionSwitcher extends StatelessWidget {
+  const _SessionSwitcher({required this.provider, required this.onSelect});
+
+  final DailyProvider provider;
+  final Future<void> Function(String id) onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    final sessions = provider.openSessions;
+    if (sessions.isEmpty) return const SizedBox.shrink();
+    final auth = context.read<AuthController>();
+    String label(DailySession s) {
+      final who = auth.isRassas
+          ? 'المشرف: ${s.supervisorName}'
+          : '${s.rassasName} ← ${s.supervisorName}';
+      return '$who • ${AppDateFormatter.date(s.date)} ${AppDateFormatter.time(s.startTime)} • ${s.status.label}';
+    }
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: AppSpacing.sm),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text('اليوميات المفتوحة (${sessions.length})',
+                style: const TextStyle(fontWeight: FontWeight.w800)),
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final s in sessions)
+                  ChoiceChip(
+                    selected: s.id == provider.activeSession?.id,
+                    label: Text(label(s)),
+                    avatar: Icon(
+                      s.isPaused ? Icons.pause_circle_outline : Icons.play_circle_outline,
+                      size: 18,
+                    ),
+                    onSelected: (_) {
+                      if (s.id != provider.activeSession?.id) onSelect(s.id);
+                    },
+                  ),
+              ],
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

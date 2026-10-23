@@ -3,10 +3,13 @@ import 'package:provider/provider.dart';
 
 import '../auth/auth_controller.dart';
 import '../providers/daily_provider.dart';
+import '../providers/notifications_provider.dart';
 import '../providers/people_provider.dart';
+import '../widgets/notifications_button.dart';
 import '../providers/records_provider.dart';
 import '../providers/rooms_provider.dart';
-import '../services/live_sync_service.dart';
+import '../services/realtime_hub.dart';
+import '../widgets/sync_indicator.dart';
 
 import 'admin/admin_screen.dart';
 import 'daily/daily_screen.dart';
@@ -46,21 +49,27 @@ class _MainTabsScreenState extends State<MainTabsScreen>
         const _TabEntry(Icons.admin_panel_settings_outlined, 'الأدمن', AdminScreen()),
     ];
     _tabController = TabController(length: _entries.length, vsync: this);
-    // المزامنة اللحظية: إعادة تحميل الشاشات بعد وصول بيانات من السحابة.
-    LiveSyncService.instance.onRemoteApplied = () async {
+    final auth = context.read<AuthController>();
+    context.read<DailyProvider>().role = auth.user?.role;
+    // المزامنة اللحظية تلقائية دائمًا: أي تغيير من جهاز آخر يعيد تحميل البيانات بهدوء.
+    RealtimeHub.instance.start(() async {
       if (!mounted) return;
       await Future.wait([
-        context.read<RoomsProvider>().loadRooms(),
-        context.read<DailyProvider>().load(),
-        context.read<RecordsProvider>().load(),
+        context.read<RoomsProvider>().loadRooms(silent: true),
+        context.read<DailyProvider>().load(silent: true),
+        context.read<RecordsProvider>().load(silent: true),
         context.read<PeopleProvider>().load(),
+        context.read<NotificationsProvider>().load(),
       ]);
-    };
+    });
+    // التحميل الأولي بعد الدخول (المزودات تُفرَّغ عند الخروج).
+    context.read<PeopleProvider>().load();
+    context.read<NotificationsProvider>().load();
   }
 
   @override
   void dispose() {
-    LiveSyncService.instance.onRemoteApplied = null;
+    RealtimeHub.instance.stop();
     _tabController.dispose();
     super.dispose();
   }
@@ -80,7 +89,7 @@ class _MainTabsScreenState extends State<MainTabsScreen>
     return Scaffold(
       appBar: AppBar(
         title: const Text('المصنع'),
-        actions: const [_UserMenu()],
+        actions: const [SyncIndicator(), NotificationsButton(), _UserMenu()],
         bottom: TabBar(
           controller: _tabController,
           indicatorColor: Colors.white,

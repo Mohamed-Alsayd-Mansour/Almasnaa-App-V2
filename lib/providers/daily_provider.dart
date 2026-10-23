@@ -1,5 +1,7 @@
 import 'package:flutter/foundation.dart';
 
+import '../auth/app_user.dart';
+import '../data/supa.dart';
 import '../models/daily_entry.dart';
 import '../models/daily_session.dart';
 import '../models/room.dart';
@@ -19,40 +21,103 @@ class DailyProvider extends ChangeNotifier {
   })  : _sessionRepository = sessionRepository ?? DailySessionRepository(),
         _entryRepository = entryRepository ?? DailyEntryRepository();
 
+  /// دور المستخدم الحالي (يُضبط عند فتح التطبيق). الرصيص: الخادم يحدد يوميته
+  /// المختارة. المشرف والأدمن: الاختيار محلي للعرض فقط.
+  AppRole? role;
+
   LoadStatus status = LoadStatus.initial;
   String? errorMessage;
 
+  /// كل اليوميات المفتوحة (مختارة + معلّقة) الظاهرة لهذا المستخدم.
+  List<DailySession> openSessions = [];
+
+  /// اليومية المعروضة حاليًا (المختارة).
   DailySession? activeSession;
   List<DailyEntry> entries = [];
 
+  String? _selectedId;
+
+  /// عند تسجيل الخروج: لا تبقى بيانات المستخدم السابق في الذاكرة.
+  void reset() {
+    openSessions = [];
+    activeSession = null;
+    entries = [];
+    _selectedId = null;
+    role = null;
+    status = LoadStatus.initial;
+    errorMessage = null;
+    notifyListeners();
+  }
+
   bool get hasActiveSession => activeSession != null;
 
-  Future<void> load() async {
-    status = LoadStatus.loading;
-    notifyListeners();
+  /// الإضافة مسموحة للرصيص والأدمن فقط، ولليومية المختارة (غير المعلّقة).
+  bool get canAddEntries =>
+      activeSession != null &&
+      activeSession!.isActive &&
+      (role == AppRole.rassas || role == AppRole.admin);
+
+  /// إنهاء اليومية: الرصيص صاحبها أو الأدمن.
+  bool get canFinish =>
+      activeSession != null &&
+      (role == AppRole.rassas || role == AppRole.admin);
+
+  Future<void> load({bool silent = false}) async {
+    if (!silent) {
+      status = LoadStatus.loading;
+      notifyListeners();
+    }
     try {
-      activeSession = await _sessionRepository.getActiveSession();
-      if (activeSession != null) {
-        entries = await _entryRepository.getEntriesForSession(activeSession!.id);
+      final open = await _sessionRepository.getOpenSessions();
+      DailySession? chosen;
+      if (role == AppRole.rassas) {
+        for (final s in open) {
+          if (s.isActive) chosen = s;
+        }
       } else {
-        entries = [];
+        for (final s in open) {
+          if (s.id == _selectedId) chosen = s;
+        }
+        chosen ??= open.isEmpty ? null : open.first;
+        _selectedId = chosen?.id;
       }
+      openSessions = open;
+      activeSession = chosen;
+      entries = chosen == null
+          ? []
+          : await _entryRepository.getEntriesForSession(chosen.id);
       status = LoadStatus.loaded;
+      errorMessage = null;
     } catch (e) {
-      errorMessage = 'تعذر تحميل اليومية: $e';
-      status = LoadStatus.error;
+      errorMessage = 'تعذر تحميل اليومية: ${friendlyError(e)}';
+      if (!silent || status != LoadStatus.loaded) status = LoadStatus.error;
     }
     notifyListeners();
   }
 
-  Future<String?> startSession() async {
+  /// تبديل اليومية المختارة (الرصيص: يعلّق السابقة على الخادم دون إغلاقها).
+  Future<String?> selectSession(String id) async {
     try {
-      activeSession = await _sessionRepository.startNewSession();
-      entries = [];
-      notifyListeners();
+      if (role == AppRole.rassas) {
+        await _sessionRepository.selectSession(id);
+      } else {
+        _selectedId = id;
+      }
+      await load(silent: true);
       return null;
     } catch (e) {
-      return 'تعذر بدء يومية جديدة: $e';
+      return 'تعذر تبديل اليومية: ${friendlyError(e)}';
+    }
+  }
+
+  /// الرصيص: فتح/استئناف يومية مع المشرف (لا تتكرر عند الضغط المتكرر).
+  Future<String?> openWithSupervisor(String supervisorId) async {
+    try {
+      await _sessionRepository.openWithSupervisor(supervisorId);
+      await load(silent: true);
+      return null;
+    } catch (e) {
+      return 'تعذر فتح اليومية: ${friendlyError(e)}';
     }
   }
 
@@ -66,8 +131,8 @@ class DailyProvider extends ChangeNotifier {
     required String numbering,
     required String carpenter,
     required String service,
-    required String installer,
-    required String supervisor,
+    String installer = '',
+    String supervisor = '',
     required String repairer,
     required String deficiencies,
     String wrapLocation = '',
@@ -79,7 +144,8 @@ class DailyProvider extends ChangeNotifier {
     String partName = '',
     int partialPieceCount = 0,
   }) async {
-    if (activeSession == null) return 'لا توجد يومية نشطة حاليًا.';
+    if (activeSession == null) return 'لا توجد يومية مختارة حاليًا.';
+    if (!canAddEntries) return 'لا يمكن الإضافة إلى هذه اليومية.';
     if (numbering.trim().isEmpty) return 'حقل الترقيم مطلوب.';
     if (room == null) {
       if (externalRoomName.trim().isEmpty) {
@@ -137,7 +203,7 @@ class DailyProvider extends ChangeNotifier {
       notifyListeners();
       return null;
     } catch (e) {
-      return 'تعذر إضافة الغرفة إلى اليومية: $e';
+      return 'تعذر إضافة الغرفة إلى اليومية: ${friendlyError(e)}';
     }
   }
 
@@ -149,7 +215,7 @@ class DailyProvider extends ChangeNotifier {
       notifyListeners();
       return null;
     } catch (e) {
-      return 'تعذر تعديل الغرفة: $e';
+      return 'تعذر تعديل الغرفة: ${friendlyError(e)}';
     }
   }
 
@@ -167,7 +233,7 @@ class DailyProvider extends ChangeNotifier {
       notifyListeners();
       return null;
     } catch (e) {
-      return 'تعذر تعديل النواقص: $e';
+      return 'تعذر تعديل النواقص: ${friendlyError(e)}';
     }
   }
 
@@ -185,7 +251,7 @@ class DailyProvider extends ChangeNotifier {
       notifyListeners();
       return null;
     } catch (e) {
-      return 'تعذر تعديل المشكلة: $e';
+      return 'تعذر تعديل المشكلة: ${friendlyError(e)}';
     }
   }
 
@@ -204,7 +270,7 @@ class DailyProvider extends ChangeNotifier {
       notifyListeners();
       return null;
     } catch (e) {
-      return 'تعذر تعديل المواصفات: $e';
+      return 'تعذر تعديل المواصفات: ${friendlyError(e)}';
     }
   }
 
@@ -224,7 +290,7 @@ class DailyProvider extends ChangeNotifier {
       notifyListeners();
       return null;
     } catch (e) {
-      return 'تعذر تعديل وصف الأوردر: $e';
+      return 'تعذر تعديل وصف الأوردر: ${friendlyError(e)}';
     }
   }
 
@@ -235,22 +301,21 @@ class DailyProvider extends ChangeNotifier {
       notifyListeners();
       return null;
     } catch (e) {
-      return 'تعذر حذف الغرفة: $e';
+      return 'تعذر حذف الغرفة: ${friendlyError(e)}';
     }
   }
 
-  /// ينهي اليومية الحالية دون المساس بأي بيانات؛ تصبح بعدها متاحة في
-  /// تبويب السجل كسجل تاريخي دائم (قاعدة العمل #15، #16).
+  /// إنهاء صريح لليومية المختارة دون المساس بأي بيانات؛ تصبح بعدها متاحة
+  /// في السجل كسجل تاريخي دائم (قاعدة العمل #15، #16).
   Future<String?> finishSession() async {
-    if (activeSession == null) return 'لا توجد يومية نشطة لإنهائها.';
+    final session = activeSession;
+    if (session == null) return 'لا توجد يومية مختارة لإنهائها.';
     try {
-      await _sessionRepository.closeSession(activeSession!.id);
-      activeSession = null;
-      entries = [];
-      notifyListeners();
+      await _sessionRepository.closeSession(session.id);
+      await load(silent: true);
       return null;
     } catch (e) {
-      return 'تعذر إنهاء اليومية: $e';
+      return 'تعذر إنهاء اليومية: ${friendlyError(e)}';
     }
   }
 }

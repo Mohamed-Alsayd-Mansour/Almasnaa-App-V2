@@ -13,11 +13,13 @@ import 'auth/auth_controller.dart';
 import 'core/app_theme.dart';
 import 'core/env.dart';
 import 'providers/daily_provider.dart';
+import 'providers/notifications_provider.dart';
 import 'providers/people_provider.dart';
 import 'providers/records_provider.dart';
 import 'providers/rooms_provider.dart';
 import 'screens/splash_screen.dart';
-import 'services/live_sync_service.dart';
+import 'services/legacy_cleanup.dart';
+import 'services/realtime_hub.dart';
 import 'utils/platform_utils.dart';
 
 /// window_manager يعمل على الديسكتوب فقط
@@ -51,7 +53,8 @@ Future<void> main() async {
     await Supabase.initialize(url: Env.supabaseUrl, anonKey: Env.supabaseAnonKey);
   }
 
-  await LiveSyncService.instance.init();
+  // 2.0: لا أسرار على الجهاز. يُحذف أي رمز GitHub قديم (بيانات 1.0 المحلية لا تُمس).
+  await LegacyCleanup.wipeSecrets();
   runApp(const AlmasnaaApp());
 }
 
@@ -62,11 +65,23 @@ class AlmasnaaApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
-        ChangeNotifierProvider(create: (_) => AuthController()..init()),
         ChangeNotifierProvider(create: (_) => RoomsProvider()),
         ChangeNotifierProvider(create: (_) => DailyProvider()),
         ChangeNotifierProvider(create: (_) => RecordsProvider()),
-        ChangeNotifierProvider(create: (_) => PeopleProvider()..load()),
+        ChangeNotifierProvider(create: (_) => PeopleProvider()),
+        ChangeNotifierProvider(create: (_) => NotificationsProvider()),
+        // آخر المزودات: سياقه يرى كل ما قبله، فيفرّغ بياناتها عند انتهاء الجلسة.
+        ChangeNotifierProvider(
+          create: (ctx) => AuthController(onSessionEnded: () {
+            RealtimeHub.instance.stop();
+            ctx.read<RoomsProvider>().reset();
+            ctx.read<PeopleProvider>().reset();
+            ctx.read<DailyProvider>().reset();
+            ctx.read<RecordsProvider>().reset();
+            ctx.read<NotificationsProvider>().reset();
+          })
+            ..init(),
+        ),
       ],
       child: const _FullscreenKeys(child: _App()),
     );

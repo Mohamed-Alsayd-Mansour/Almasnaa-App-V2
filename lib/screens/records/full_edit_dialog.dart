@@ -214,18 +214,6 @@ class _FullEditDialogState extends State<_FullEditDialog> {
                 ),
                 _gap(),
                 PersonDropdownField(
-                  role: PersonRole.installer,
-                  value: _installer,
-                  onChanged: (v) => setState(() => _installer = v),
-                ),
-                _gap(),
-                PersonDropdownField(
-                  role: PersonRole.supervisor,
-                  value: _supervisor,
-                  onChanged: (v) => setState(() => _supervisor = v),
-                ),
-                _gap(),
-                PersonDropdownField(
                   role: PersonRole.repairer,
                   value: _repairer,
                   onChanged: (v) => setState(() => _repairer = v),

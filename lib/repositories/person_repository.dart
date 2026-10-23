@@ -1,30 +1,17 @@
 import 'package:uuid/uuid.dart';
 
-import '../database/app_database.dart';
+import '../data/supa.dart';
 import '../models/person.dart';
 
-/// قراءة/كتابة قوائم الأسماء (الخدمة، النجار، الرصيص، المشرف، الرميم).
+/// قوائم الأسماء التشغيلية على الخادم (الأدمن والمشرف يكتبان، الرصيص قراءة).
 class PersonRepository {
-  final AppDatabase _db;
   final _uuid = const Uuid();
 
-  PersonRepository({AppDatabase? db}) : _db = db ?? AppDatabase.instance;
-
-  Future<List<Person>> _readAll() async {
-    final rows = await _db.readList(AppDatabase.peopleKey);
-    return rows.map(Person.fromMap).toList();
-  }
-
-  Future<void> _writeAll(List<Person> people) async {
-    await _db.writeList(
-      AppDatabase.peopleKey,
-      people.map((p) => p.toMap()).toList(),
-    );
-  }
-
   Future<List<Person>> getAll() async {
-    final people = await _readAll();
-    people.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    final rows = await fetchAll((from, to) =>
+        supa.from('people').select().order('name').range(from, to));
+    final people = rows.map((r) => Person.fromMap(fromServer(r))).toList()
+      ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
     return people;
   }
 
@@ -35,30 +22,30 @@ class PersonRepository {
       role: role,
       createdAt: DateTime.now(),
     );
-    final people = await _readAll();
-    people.add(person);
-    await _writeAll(people);
+    await supa
+        .from('people')
+        .upsert(toServer(person.toMap())..remove('created_at'),
+            onConflict: 'id', ignoreDuplicates: true);
     return person;
   }
 
   Future<Person> update(Person person) async {
-    final people = await _readAll();
-    final idx = people.indexWhere((p) => p.id == person.id);
-    if (idx == -1) throw StateError('الاسم غير موجود.');
-    people[idx] = person;
-    await _writeAll(people);
+    final rows = await supa
+        .from('people')
+        .update({'name': person.name.trim(), 'role': person.role.dbValue})
+        .eq('id', person.id)
+        .select('id');
+    if (rows.isEmpty) throw StateError('الاسم غير موجود أو غير مصرح بتعديله.');
     return person;
   }
 
   Future<void> delete(String id) async {
-    final people = await _readAll();
-    people.removeWhere((p) => p.id == id);
-    await _writeAll(people);
+    final rows = await supa.from('people').delete().eq('id', id).select('id');
+    if (rows.isEmpty) throw StateError('تعذر الحذف (غير موجود أو غير مصرح).');
   }
 
-  Future<bool> isNameTaken(String name, PersonRole role,
-      {String? excludingId}) async {
-    final people = await _readAll();
+  Future<bool> isNameTaken(String name, PersonRole role, {String? excludingId}) async {
+    final people = await getAll();
     final target = name.trim().toLowerCase();
     return people.any((p) =>
         p.role == role &&
