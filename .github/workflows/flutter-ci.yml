@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: almasnaa-ci-${{ github.ref }}
@@ -147,6 +147,13 @@ jobs:
           path: build/web/
           if-no-files-found: error
           retention-days: 14
+    
+      - name: Deploy latest Web version to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_branch: gh-pages
+          publish_dir: ./build/web
 
   build-windows:
     name: Build Windows release
