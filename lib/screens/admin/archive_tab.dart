@@ -120,10 +120,12 @@ class _ArchiveTabState extends State<ArchiveTab> {
       _say('تعذّر الاتصال بالخادم');
     } finally {
       final runs = await ArchiveApi.instance.recentRuns().catchError((_) => _runs);
-      if (mounted) setState(() {
-            _runs = runs;
-            _busy = false;
-          });
+      if (mounted) {
+        setState(() {
+          _runs = runs;
+          _busy = false;
+        });
+      }
     }
   }
 
