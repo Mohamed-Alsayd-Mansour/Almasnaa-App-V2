@@ -137,6 +137,7 @@ jobs:
         shell: bash
         run: |
           flutter build web --release \
+            --base-href "/Almasnaa-App-V2/" \
             --dart-define=SUPABASE_URL="$SUPABASE_URL" \
             --dart-define=SUPABASE_ANON_KEY="$SUPABASE_ANON_KEY"
 
