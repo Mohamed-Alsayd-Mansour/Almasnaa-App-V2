@@ -70,11 +70,16 @@ class _RoomsScreenState extends State<RoomsScreen> {
       return;
     }
     final query = provider.query.trim();
+    final category = provider.category;
+    final subtitleParts = [
+      if (category != null) 'التصنيف: $category',
+      if (query.isNotEmpty) 'نتائج البحث: $query',
+    ];
     await runHtmlPrintFlow<Room>(
       context,
       spec: HtmlPrintService.roomsSpec,
       rows: rooms,
-      subtitle: query.isEmpty ? null : 'نتائج البحث: $query',
+      subtitle: subtitleParts.isEmpty ? null : subtitleParts.join(' — '),
       fileNamePrefix: 'سجل-الغرف-${AppDateFormatter.date(DateTime.now()).replaceAll('/', '-')}',
     );
   }
@@ -132,6 +137,8 @@ class _RoomsScreenState extends State<RoomsScreen> {
               ),
             ],
           ),
+          const SizedBox(height: AppSpacing.sm),
+          const _CategoryFilters(),
           const SizedBox(height: AppSpacing.md),
           Expanded(
             child: Consumer<RoomsProvider>(
@@ -150,10 +157,10 @@ class _RoomsScreenState extends State<RoomsScreen> {
                 if (rooms.isEmpty) {
                   return EmptyState(
                     icon: Icons.meeting_room_outlined,
-                    title: provider.query.isEmpty
+                    title: provider.query.isEmpty && provider.category == null
                         ? 'لا توجد غرف مسجّلة بعد'
                         : 'لا توجد نتائج مطابقة',
-                    subtitle: provider.query.isEmpty
+                    subtitle: provider.query.isEmpty && provider.category == null
                         ? 'ابدأ بإضافة أول غرفة من زر "إضافة غرفة".'
                         : null,
                   );
@@ -197,6 +204,95 @@ class _RoomsScreenState extends State<RoomsScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// أزرار التصنيف السريع: أطفال / سفرة / نوم. على الهاتف تمتد على عرض الصف بالكامل بعرض
+/// ومسافات متساوية؛ على الشاشات الأكبر تبقى بحجم معتدل ولا تتمدد.
+class _CategoryFilters extends StatelessWidget {
+  const _CategoryFilters();
+
+  static const _items = <({String word, Color color})>[
+    (word: 'أطفال', color: Color(0xFFD9822B)), // برتقالي دافئ (من لون التمييز)
+    (word: 'سفرة', color: Color(0xFF2E7D6B)), // أخضر مزرق
+    (word: 'نوم', color: Color(0xFF3F5E9E)), // أزرق نيلي
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final selected = context.select<RoomsProvider, String?>((p) => p.category);
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final narrow = constraints.maxWidth < 700;
+        final row = Row(
+          children: [
+            for (var i = 0; i < _items.length; i++) ...[
+              if (i > 0) const SizedBox(width: AppSpacing.sm),
+              Expanded(
+                child: _CategoryButton(
+                  word: _items[i].word,
+                  color: _items[i].color,
+                  selected: selected == _items[i].word,
+                  onTap: () => context.read<RoomsProvider>().toggleCategory(_items[i].word),
+                ),
+              ),
+            ],
+          ],
+        );
+        if (narrow) return row;
+        return Align(
+          alignment: AlignmentDirectional.centerStart,
+          child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 420), child: row),
+        );
+      },
+    );
+  }
+}
+
+class _CategoryButton extends StatelessWidget {
+  const _CategoryButton({required this.word, required this.color, required this.selected, required this.onTap});
+
+  final String word;
+  final Color color;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    // المحدد: لون أغمق + علامة ✓ + إطار أبيض وظل، حتى يُعرف أنه فعّال دون الاعتماد على اللون وحده.
+    final bg = selected ? HSLColor.fromColor(color).withLightness((HSLColor.fromColor(color).lightness - 0.08).clamp(0.0, 1.0)).toColor() : color;
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: 'عرض غرف $word',
+      child: Material(
+        color: bg,
+        elevation: selected ? 4 : 0,
+        borderRadius: BorderRadius.circular(10),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(10),
+          onTap: onTap,
+          child: Container(
+            height: 44,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(10),
+              border: selected ? Border.all(color: Colors.white, width: 2) : null,
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (selected) ...[
+                  const Icon(Icons.check, size: 18, color: Colors.white),
+                  const SizedBox(width: 4),
+                ],
+                Text(word, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 15)),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }

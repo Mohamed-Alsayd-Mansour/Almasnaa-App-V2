@@ -19,7 +19,17 @@ class AppNotification {
     this.conversationId,
     this.summary,
     this.viewAsName,
+    this.archivedAt,
+    this.deletedAt,
   });
+
+  final DateTime? archivedAt;
+  final DateTime? deletedAt;
+
+  /// مكان الإشعار: الوارد / الأرشيف / سلة المحذوفات.
+  bool get inTrash => deletedAt != null;
+  bool get inArchive => deletedAt == null && archivedAt != null;
+  bool get inInbox => deletedAt == null && archivedAt == null;
 
   /// 'audit' (تغيير في البيانات) أو 'mention' (إشارة في محادثة).
   final String kind;
@@ -59,6 +69,8 @@ class AppNotification {
       conversationId: r['conversation_id'] as String?,
       summary: r['summary'] as String?,
       viewAsName: a['view_as_name'] as String?,
+      archivedAt: r['archived_at'] == null ? null : DateTime.parse(r['archived_at'] as String).toLocal(),
+      deletedAt: r['deleted_at'] == null ? null : DateTime.parse(r['deleted_at'] as String).toLocal(),
     );
   }
 
@@ -127,12 +139,26 @@ class AppNotification {
   }
 }
 
+/// أقسام مركز الإشعارات.
+enum NotifView { inbox, archive, trash }
+
 /// مركز الإشعارات: بيانات خادم دائمة، تتحدث لحظيًا مع المزامنة.
+/// الأرشفة والحذف (إلى السلة) والاستعادة والحذف النهائي كلها تُكتب في Supabase على صفوف المستلم نفسه
+/// (RLS)، فتظهر على كل أجهزته. الحذف النهائي مسموح من الخادم فقط لما هو داخل السلة.
 class NotificationsProvider extends ChangeNotifier {
   List<AppNotification> items = [];
   String? errorMessage;
 
-  int get unread => items.where((n) => !n.isRead).length;
+  List<AppNotification> inView(NotifView v) => items
+      .where((n) => switch (v) {
+            NotifView.inbox => n.inInbox,
+            NotifView.archive => n.inArchive,
+            NotifView.trash => n.inTrash,
+          })
+      .toList();
+
+  /// عدّاد الجرس: غير المقروء في الوارد فقط.
+  int get unread => items.where((n) => n.inInbox && !n.isRead).length;
 
   void reset() {
     items = [];
@@ -144,10 +170,10 @@ class NotificationsProvider extends ChangeNotifier {
     try {
       final rows = await supa
           .from('notifications')
-          .select('id, created_at, read_at, kind, message_id, conversation_id, actor_name, summary, '
+          .select('id, created_at, read_at, archived_at, deleted_at, kind, message_id, conversation_id, actor_name, summary, '
               'audit:audit_log(op, entity, entity_id, actor_name, actor_role, changes, view_as_name)')
           .order('id', ascending: false)
-          .limit(100);
+          .limit(300);
       items = rows.map((r) => AppNotification.fromRow(Map<String, dynamic>.from(r))).toList();
       errorMessage = null;
     } catch (e) {
@@ -156,30 +182,58 @@ class NotificationsProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> markRead(AppNotification n) async {
-    if (n.isRead) return;
+  static String _now() => DateTime.now().toUtc().toIso8601String();
+
+  Future<void> _run(Future<void> Function() op) async {
     try {
-      await supa
-          .from('notifications')
-          .update({'read_at': DateTime.now().toUtc().toIso8601String()})
-          .eq('id', n.id);
-      await load();
+      await op();
+      errorMessage = null;
     } catch (e) {
       errorMessage = friendlyError(e);
-      notifyListeners();
     }
+    await load();
   }
 
-  Future<void> markAllRead() async {
-    try {
-      await supa
-          .from('notifications')
-          .update({'read_at': DateTime.now().toUtc().toIso8601String()})
-          .isFilter('read_at', null);
-      await load();
-    } catch (e) {
-      errorMessage = friendlyError(e);
-      notifyListeners();
-    }
+  Future<void> markRead(AppNotification n) async {
+    if (n.isRead) return;
+    await _run(() async {
+      await supa.from('notifications').update({'read_at': _now()}).eq('id', n.id);
+    });
+  }
+
+  Future<void> markAllRead() => _run(() async {
+        await supa
+            .from('notifications')
+            .update({'read_at': _now()})
+            .isFilter('read_at', null)
+            .isFilter('archived_at', null)
+            .isFilter('deleted_at', null);
+      });
+
+  Future<void> _patch(List<AppNotification> list, Map<String, Object?> values) async {
+    if (list.isEmpty) return;
+    await _run(() async {
+      await supa.from('notifications').update(values).inFilter('id', list.map((n) => n.id).toList());
+    });
+  }
+
+  /// أرشفة (قابلة للتراجع).
+  Future<void> archive(List<AppNotification> list) => _patch(list, {'archived_at': _now()});
+
+  Future<void> unarchive(List<AppNotification> list) => _patch(list, {'archived_at': null});
+
+  /// «حذف» = نقل إلى سلة المحذوفات (لا حذف نهائي).
+  Future<void> moveToTrash(List<AppNotification> list) => _patch(list, {'deleted_at': _now()});
+
+  /// استعادة من السلة: يعود الإشعار إلى مكانه السابق (الوارد أو الأرشيف).
+  Future<void> restore(List<AppNotification> list) => _patch(list, {'deleted_at': null});
+
+  /// حذف نهائي: لا رجعة فيه، والخادم لا يسمح به إلا لإشعارات السلة.
+  Future<void> deleteForever(List<AppNotification> list) async {
+    final trashed = list.where((n) => n.inTrash).toList();
+    if (trashed.isEmpty) return;
+    await _run(() async {
+      await supa.from('notifications').delete().inFilter('id', trashed.map((n) => n.id).toList());
+    });
   }
 }

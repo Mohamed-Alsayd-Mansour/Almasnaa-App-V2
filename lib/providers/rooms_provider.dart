@@ -19,18 +19,44 @@ class RoomsProvider extends ChangeNotifier {
   List<Room> _allRooms = [];
   String _query = '';
 
+  /// فلتر التصنيف السريع (أطفال / سفرة / نوم): الغرف التي يبدأ اسمها بهذه الكلمة. null = الكل.
+  String? _category;
+
+  /// توحيد بسيط للعربية للمقارنة: الهمزات على الألف، حذف التشكيل والتطويل.
+  static String _norm(String s) => s
+      .trim()
+      .replaceAll(RegExp('[\u064B-\u0652\u0640]'), '')
+      .replaceAll(RegExp('[أإآٱ]'), 'ا');
+
+  /// الغرف بعد تطبيق الفلتر والبحث معًا (الشرطان يجتمعان).
   List<Room> get rooms {
-    if (_query.trim().isEmpty) return _allRooms;
-    final q = _query.trim();
-    return _allRooms.where((r) => r.name.contains(q)).toList();
+    Iterable<Room> list = _allRooms;
+    final cat = _category;
+    if (cat != null) {
+      final c = _norm(cat);
+      list = list.where((r) => _norm(r.name).startsWith(c));
+    }
+    if (_query.trim().isNotEmpty) {
+      final q = _query.trim();
+      list = list.where((r) => r.name.contains(q));
+    }
+    return list.toList();
   }
 
   String get query => _query;
+  String? get category => _category;
+
+  /// الضغط على التصنيف المحدد مرة ثانية يلغيه ويعيد عرض كل الغرف.
+  void toggleCategory(String word) {
+    _category = _category == word ? null : word;
+    notifyListeners();
+  }
 
   /// عند تسجيل الخروج: لا تبقى بيانات المستخدم السابق في الذاكرة.
   void reset() {
     _allRooms = [];
     _query = '';
+    _category = null;
     status = LoadStatus.initial;
     errorMessage = null;
     notifyListeners();
