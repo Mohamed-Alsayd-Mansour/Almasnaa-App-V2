@@ -13,6 +13,7 @@ import 'auth/auth_controller.dart';
 import 'core/app_theme.dart';
 import 'core/env.dart';
 import 'providers/daily_provider.dart';
+import 'providers/chat_provider.dart';
 import 'providers/notifications_provider.dart';
 import 'providers/people_provider.dart';
 import 'providers/records_provider.dart';
@@ -70,6 +71,7 @@ class AlmasnaaApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => RecordsProvider()),
         ChangeNotifierProvider(create: (_) => PeopleProvider()),
         ChangeNotifierProvider(create: (_) => NotificationsProvider()),
+        ChangeNotifierProvider(create: (_) => ChatProvider()),
         // آخر المزودات: سياقه يرى كل ما قبله، فيفرّغ بياناتها عند انتهاء الجلسة.
         ChangeNotifierProvider(
           create: (ctx) => AuthController(onSessionEnded: () {
@@ -79,6 +81,7 @@ class AlmasnaaApp extends StatelessWidget {
             ctx.read<DailyProvider>().reset();
             ctx.read<RecordsProvider>().reset();
             ctx.read<NotificationsProvider>().reset();
+            ctx.read<ChatProvider>().reset();
           })
             ..init(),
         ),

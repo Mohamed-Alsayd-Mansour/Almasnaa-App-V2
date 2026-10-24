@@ -1,0 +1,56 @@
+name: Deploy github-archive Edge Function
+
+# Deploys the server-side archive function and (optionally) writes its two secrets to Supabase.
+# The GitHub token is only ever an Edge Function secret — it is not stored in the database or in the app.
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "supabase/functions/github-archive/**"
+      - "supabase/config.toml"
+      - ".github/workflows/deploy-github-archive.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-github-archive-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_PROJECT_ID: ${{ vars.SUPABASE_PROJECT_ID }}
+      # Optional: if set, they are pushed to the function's secrets on every deploy.
+      ARCHIVE_GITHUB_TOKEN: ${{ secrets.ARCHIVE_GITHUB_TOKEN }}
+      ARCHIVE_CRON_SECRET: ${{ secrets.ARCHIVE_CRON_SECRET }}
+    steps:
+      - name: Check required GitHub configuration
+        shell: bash
+        run: |
+          for name in SUPABASE_ACCESS_TOKEN SUPABASE_PROJECT_ID; do
+            if [ -z "${!name}" ]; then echo "::error::Missing GitHub setting: $name"; exit 1; fi
+          done
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v3
+        with:
+          version: latest
+      - name: Deploy github-archive
+        run: supabase functions deploy github-archive --project-ref "$SUPABASE_PROJECT_ID"
+      - name: Set function secrets (only those provided)
+        shell: bash
+        run: |
+          set -euo pipefail
+          args=()
+          [ -n "${ARCHIVE_GITHUB_TOKEN:-}" ] && args+=("GITHUB_ARCHIVE_TOKEN=${ARCHIVE_GITHUB_TOKEN}")
+          [ -n "${ARCHIVE_CRON_SECRET:-}" ]  && args+=("ARCHIVE_CRON_SECRET=${ARCHIVE_CRON_SECRET}")
+          if [ "${#args[@]}" -gt 0 ]; then
+            supabase secrets set "${args[@]}" --project-ref "$SUPABASE_PROJECT_ID" >/dev/null
+            echo "Function secrets updated."
+          else
+            echo "No secrets provided in GitHub; set them with 'supabase secrets set' (see docs/PHASE4_SETUP.md)."
+          fi

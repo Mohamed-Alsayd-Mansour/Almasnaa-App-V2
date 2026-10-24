@@ -1,6 +1,7 @@
 import 'package:uuid/uuid.dart';
 
 import '../data/supa.dart';
+import '../data/view_scope.dart';
 import '../models/daily_entry.dart';
 import '../models/daily_session.dart';
 import '../models/enums.dart';
@@ -25,6 +26,9 @@ class RecordSearchFilters {
   /// ملكية الغرفة: داخلية / خارجية / أوردر (null = الكل).
   final RoomOwnership? ownership;
 
+  /// يعرض سجلًا واحدًا فقط (الانتقال من إشعار إلى السجل المرتبط).
+  final String? entryId;
+
   const RecordSearchFilters({
     this.keyword = '',
     this.dateFrom,
@@ -37,6 +41,7 @@ class RecordSearchFilters {
     this.status,
     this.shape,
     this.ownership,
+    this.entryId,
   });
 
   bool get isEmpty =>
@@ -50,7 +55,8 @@ class RecordSearchFilters {
       (wrapLocation == null || wrapLocation!.isEmpty) &&
       status == null &&
       shape == null &&
-      ownership == null;
+      ownership == null &&
+      entryId == null;
 
   RecordSearchFilters clear() => const RecordSearchFilters();
 }
@@ -62,32 +68,32 @@ class DailyEntryRepository {
   final _uuid = const Uuid();
 
   Future<List<DailyEntry>> fetchAllEntries() async {
-    final rows = await fetchAll((from, to) => supa
-        .from('daily_entries')
-        .select()
-        .order('created_at')
-        .order('id')
-        .range(from, to));
+    final owner = ViewScope.entryOwnerColumn;
+    final rows = await fetchAll((from, to) {
+      var q = supa.from('daily_entries').select();
+      if (owner != null) q = q.eq(owner, ViewScope.targetId!);
+      return q.order('created_at').order('id').range(from, to);
+    });
     return rows.map((r) => DailyEntry.fromMap(fromServer(r))).toList();
   }
 
   Future<List<DailySession>> fetchAllSessions() async {
     final rows = await fetchAll((from, to) =>
         supa.from('daily_sessions').select().order('id').range(from, to));
-    return rows.map((r) => DailySession.fromMap(fromServer(r))).toList();
+    final all = rows.map((r) => DailySession.fromMap(fromServer(r))).toList();
+    return ViewScope.filterSessions(all);
   }
 
   Future<List<DailyEntry>> _readAllEntries() => fetchAllEntries();
   Future<List<DailySession>> _readAllSessions() => fetchAllSessions();
 
   Future<List<DailyEntry>> getEntriesForSession(String sessionId) async {
-    final rows = await fetchAll((from, to) => supa
-        .from('daily_entries')
-        .select()
-        .eq('daily_session_id', sessionId)
-        .order('created_at')
-        .order('id')
-        .range(from, to));
+    final owner = ViewScope.entryOwnerColumn;
+    final rows = await fetchAll((from, to) {
+      var q = supa.from('daily_entries').select().eq('daily_session_id', sessionId);
+      if (owner != null) q = q.eq(owner, ViewScope.targetId!);
+      return q.order('created_at').order('id').range(from, to);
+    });
     return rows.map((r) => DailyEntry.fromMap(fromServer(r))).toList();
   }
 
@@ -358,6 +364,9 @@ class DailyEntryRepository {
 
     if (filters.ownership != null) {
       rows = rows.where((r) => r.entry.ownership == filters.ownership).toList();
+    }
+    if (filters.entryId != null) {
+      rows = rows.where((r) => r.entry.id == filters.entryId).toList();
     }
 
     rows.sort((a, b) {

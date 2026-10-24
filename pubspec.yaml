@@ -22,6 +22,10 @@ dependencies:
   open_filex: ^4.5.0
   window_manager: ^0.5.1
   supabase_flutter: ^2.8.0
+  cross_file: ^0.3.4+2
+  path_provider: ^2.1.4
+  record: ^6.0.0
+  audioplayers: ^6.1.0
 
 dev_dependencies:
   flutter_test:

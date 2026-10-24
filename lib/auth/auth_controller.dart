@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../core/env.dart';
+import '../data/view_scope.dart';
 import 'app_user.dart';
 
 /// مراحل الدخول قبل فتح التطبيق.
@@ -49,9 +50,42 @@ class AuthController extends ChangeNotifier {
 
   SupabaseClient get _c => Supabase.instance.client;
 
-  bool get isAdmin => user?.role == AppRole.admin;
-  bool get isRassas => user?.role == AppRole.rassas;
-  bool get isSupervisor => user?.role == AppRole.supervisor;
+  /// وضع «عرض كمستخدم» (الأدمن فقط): يغيّر نطاق العرض والواجهة لا الصلاحيات الفعلية.
+  DirectoryUser? viewAs;
+
+  /// الدور المعروض في الواجهة (دور المستخدم المستهدف أثناء وضع العرض).
+  AppRole? get effectiveRole => viewAs?.role ?? user?.role;
+
+  /// الأدمن الحقيقي المسجَّل دخوله (يتجاهل وضع العرض).
+  bool get realIsAdmin => user?.role == AppRole.admin;
+
+  bool get isAdmin => effectiveRole == AppRole.admin;
+  bool get isRassas => effectiveRole == AppRole.rassas;
+  bool get isSupervisor => effectiveRole == AppRole.supervisor;
+
+  /// بدء عرض التطبيق كمستخدم آخر (للأدمن فقط؛ يُتحقق منه هنا وفي الخادم لأغراض التدقيق).
+  void startViewAs(DirectoryUser target) {
+    if (!realIsAdmin || target.id == user?.id) return;
+    viewAs = target;
+    ViewScope.apply(id: target.id, role: target.role.dbValue);
+    notifyListeners();
+  }
+
+  void stopViewAs() {
+    if (viewAs == null) return;
+    viewAs = null;
+    ViewScope.clear();
+    notifyListeners();
+  }
+
+  /// كل المستخدمين النشطين (لاختيار المستخدم في وضع العرض).
+  Future<List<DirectoryUser>> activeUsers() async {
+    final rows = await _c.from('directory').select().order('display_name');
+    return (rows as List)
+        .map((e) => DirectoryUser.fromMap(Map<String, dynamic>.from(e as Map)))
+        .where((u) => u.id != user?.id)
+        .toList();
+  }
 
   /// الغرف: الأدمن والرصيص يديران، المشرف قراءة فقط.
   bool get canManageRooms => isAdmin || isRassas;
@@ -251,6 +285,8 @@ class AuthController extends ChangeNotifier {
   void _reset({String? message}) {
     _watchdog?.cancel();
     onSessionEnded?.call();
+    viewAs = null;
+    ViewScope.clear();
     user = null;
     currentSupervisorId = null;
     currentSupervisorName = null;

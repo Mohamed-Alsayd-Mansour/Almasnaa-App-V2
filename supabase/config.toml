@@ -2,3 +2,7 @@ project_id = "zvjfvbqmqqystwfhllyo"
 
 [functions.admin-users]
 verify_jwt = true
+
+# Phase 4: the function authenticates its callers itself (admin JWT or the scheduler secret).
+[functions.github-archive]
+verify_jwt = false

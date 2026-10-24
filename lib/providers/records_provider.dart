@@ -49,6 +49,7 @@ class RecordsProvider extends ChangeNotifier {
       status: filters.status,
       shape: filters.shape,
       ownership: filters.ownership,
+      entryId: filters.entryId,
     );
     notifyListeners();
     _debounce?.cancel();

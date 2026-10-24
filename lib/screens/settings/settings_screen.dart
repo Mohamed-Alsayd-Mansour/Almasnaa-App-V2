@@ -158,6 +158,33 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
+  /// حذف قوائم الأسماء فقط (الأدمن). الغرف واليوميات والإدخالات تبقى كما هي.
+  Future<void> _deletePeopleOnly() async {
+    final confirmed = await confirmDelete(
+      context,
+      title: 'حذف الأسماء فقط',
+      message: 'سيتم حذف جميع الأسماء من قوائم (الخدمة، النجار، الرصيص، المشرف، الرميم، مكان اللف).\n'
+          'الغرف واليوميات والإدخالات المسجّلة تبقى كما هي. لا يمكن التراجع عن هذه العملية.',
+    );
+    if (!confirmed || !mounted) return;
+    final password = await askBackupPassword(context, action: 'حذف الأسماء');
+    if (password == null || !mounted) return;
+    setState(() => _busy = true);
+    try {
+      final n = await _backup.deletePeopleOnly(password);
+      if (!mounted) return;
+      await _reloadAll();
+      if (!mounted) return;
+      showSuccessSnackBar(context, 'تم حذف $n اسم من القوائم.');
+    } on BackupException catch (e) {
+      if (mounted) showErrorSnackBar(context, e.message);
+    } catch (e) {
+      if (mounted) showErrorSnackBar(context, 'تعذر حذف الأسماء.');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   Future<void> _addPerson([PersonRole? role]) async {
     final ok = await showPersonDialog(
       context,
@@ -256,6 +283,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         foregroundColor: Colors.red.shade700,
                         side: BorderSide(color: Colors.red.shade700),
                       ),
+                      onPressed: _busy ? null : _deletePeopleOnly,
+                      icon: const Icon(Icons.person_remove_outlined),
+                      label: const Text('حذف الأسماء فقط',
+                          textAlign: TextAlign.center),
+                    ),
+                    if (isAdmin) const SizedBox(height: AppSpacing.sm),
+                    if (isAdmin) OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.red.shade700,
+                        side: BorderSide(color: Colors.red.shade700),
+                      ),
                       onPressed: _busy ? null : _deleteAll,
                       icon: const Icon(Icons.delete_forever_outlined),
                       label: const Text('حذف جميع البيانات',
@@ -276,6 +314,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       onPressed: _busy ? null : _import,
                       icon: const Icon(Icons.file_upload_outlined),
                       label: const Text('استيراد JSON'),
+                    ),
+                    if (isAdmin) OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.red.shade700,
+                        side: BorderSide(color: Colors.red.shade700),
+                      ),
+                      onPressed: _busy ? null : _deletePeopleOnly,
+                      icon: const Icon(Icons.person_remove_outlined),
+                      label: const Text('حذف الأسماء فقط'),
                     ),
                     if (isAdmin) OutlinedButton.icon(
                       style: OutlinedButton.styleFrom(

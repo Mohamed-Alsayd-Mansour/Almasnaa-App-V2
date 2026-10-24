@@ -13,7 +13,23 @@ class AppNotification {
     required this.actorName,
     required this.actorRole,
     required this.changes,
+    this.kind = 'audit',
+    this.entityId,
+    this.messageId,
+    this.conversationId,
+    this.summary,
+    this.viewAsName,
   });
+
+  /// 'audit' (تغيير في البيانات) أو 'mention' (إشارة في محادثة).
+  final String kind;
+  final String? entityId;
+  final String? messageId;
+  final String? conversationId;
+  final String? summary;
+  final String? viewAsName;
+
+  bool get isMention => kind == 'mention';
 
   final int id;
   final DateTime createdAt;
@@ -34,9 +50,15 @@ class AppNotification {
       readAt: r['read_at'] == null ? null : DateTime.parse(r['read_at'] as String).toLocal(),
       op: a['op'] as String? ?? '',
       entity: a['entity'] as String? ?? '',
-      actorName: a['actor_name'] as String? ?? '',
+      actorName: (r['actor_name'] as String?) ?? a['actor_name'] as String? ?? '',
       actorRole: a['actor_role'] as String?,
       changes: a['changes'] is Map ? Map<String, dynamic>.from(a['changes'] as Map) : null,
+      kind: r['kind'] as String? ?? 'audit',
+      entityId: a['entity_id'] as String?,
+      messageId: r['message_id'] as String?,
+      conversationId: r['conversation_id'] as String?,
+      summary: r['summary'] as String?,
+      viewAsName: a['view_as_name'] as String?,
     );
   }
 
@@ -57,6 +79,7 @@ class AppNotification {
     'DELETE': 'حذف',
     'IMPORT': 'استيراد',
     'DELETE_ALL': 'حذف جماعي',
+    'DELETE_NAMES': 'حذف الأسماء فقط',
   };
   static const _roles = {'admin': 'الأدمن', 'rassas': 'الرصيص', 'supervisor': 'المشرف'};
 
@@ -76,6 +99,7 @@ class AppNotification {
   };
 
   String get title {
+    if (isMention) return '${actorName.isEmpty ? 'مستخدم' : actorName} أشار إليك في محادثة';
     final who = actorName.isEmpty ? 'النظام' : actorName;
     final role = _roles[actorRole];
     return '$who${role == null ? '' : ' ($role)'}: ${_ops[op] ?? op} — ${_entities[entity] ?? entity}';
@@ -83,6 +107,15 @@ class AppNotification {
 
   /// تفاصيل مختصرة آمنة: اسم الغرفة إن وُجد، والحقول المتغيرة (بأسمائها فقط).
   String get detail {
+    if (isMention) return summary == null ? 'لا تملك صلاحية عرض هذه المحادثة' : summary!;
+    final extra = viewAsName == null ? '' : '\nنُفِّذ أثناء عرضه التطبيق كـ $viewAsName';
+    return _detailCore() + extra;
+  }
+
+  /// هل للإشعار هدف يمكن الانتقال إليه؟
+  bool get canOpen => isMention ? conversationId != null : (entity == 'daily_entries' && entityId != null && op != 'DELETE');
+
+  String _detailCore() {
     final c = changes;
     if (c == null) return '';
     if (op == 'UPDATE') {
@@ -111,7 +144,8 @@ class NotificationsProvider extends ChangeNotifier {
     try {
       final rows = await supa
           .from('notifications')
-          .select('id, created_at, read_at, audit:audit_log(op, entity, actor_name, actor_role, changes)')
+          .select('id, created_at, read_at, kind, message_id, conversation_id, actor_name, summary, '
+              'audit:audit_log(op, entity, entity_id, actor_name, actor_role, changes, view_as_name)')
           .order('id', ascending: false)
           .limit(100);
       items = rows.map((r) => AppNotification.fromRow(Map<String, dynamic>.from(r))).toList();

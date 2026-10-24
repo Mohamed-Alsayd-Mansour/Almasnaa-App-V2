@@ -159,6 +159,20 @@ class BackupService {
     }
   }
 
+  /// خيار 1.0 «حذف الأسماء فقط»: يمسح قوائم الأسماء ويُبقي الغرف واليوميات والإدخالات.
+  Future<int> deletePeopleOnly(String password) async {
+    try {
+      final r = _asMap(await supa.rpc('delete_people_only', params: {'p_password': password}));
+      if (r['ok'] != true) throw BackupException(_err(r['error'], r['detail']));
+      final d = r['deleted'];
+      return d is Map ? ((d['people'] as num?) ?? 0).toInt() : 0;
+    } on BackupException {
+      rethrow;
+    } catch (e) {
+      throw BackupException(friendlyError(e));
+    }
+  }
+
   Future<void> deleteAll(String password) async {
     try {
       final r = _asMap(await supa.rpc('delete_all_data', params: {'p_password': password}));

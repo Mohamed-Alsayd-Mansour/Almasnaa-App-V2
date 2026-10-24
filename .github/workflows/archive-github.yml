@@ -1,0 +1,29 @@
+name: Archive data to GitHub (scheduled)
+
+# Calls the github-archive Edge Function. The GitHub token never appears here: it is a secret of the function itself.
+# Required: GitHub Actions variable SUPABASE_URL, Actions secret ARCHIVE_CRON_SECRET (same value as the function secret).
+on:
+  schedule:
+    - cron: "30 21 * * *"       # daily 21:30 UTC (= 00:30 Cairo); the function skips unchanged data
+  workflow_dispatch:
+
+jobs:
+  archive:
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_URL: ${{ vars.SUPABASE_URL }}
+      ARCHIVE_CRON_SECRET: ${{ secrets.ARCHIVE_CRON_SECRET }}
+    steps:
+      - name: Check configuration
+        run: |
+          for n in SUPABASE_URL ARCHIVE_CRON_SECRET; do
+            if [ -z "${!n}" ]; then echo "::error::Missing GitHub setting: $n"; exit 1; fi
+          done
+      - name: Run archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="$(curl --silent --show-error --max-time 120 --request POST "${SUPABASE_URL%/}/functions/v1/github-archive" \
+            --header "x-archive-secret: $ARCHIVE_CRON_SECRET" --header "Content-Type: application/json" --data '{}')"
+          echo "$out" | jq -c 'del(.commit)' || true
+          jq -e '.ok == true' <<< "$out" >/dev/null || { echo "::error::archive failed: $(jq -r '.error // "unknown"' <<< "$out")"; exit 1; }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../providers/notifications_provider.dart';
+import '../services/app_navigator.dart';
 import '../utils/date_formatter.dart';
 
 /// جرس الإشعارات في شريط التطبيق مع عدّاد غير المقروء.
@@ -71,8 +72,16 @@ class _NotificationsSheet extends StatelessWidget {
                           if (n.detail.isNotEmpty) n.detail,
                           AppDateFormatter.dateTime(n.createdAt),
                         ].join('\n')),
-                        isThreeLine: n.detail.isNotEmpty,
-                        onTap: () => p.markRead(n),
+                        isThreeLine: n.detail.contains('\n') || n.detail.length > 40,
+                        trailing: n.canOpen ? const Icon(Icons.chevron_left) : null,
+                        onTap: () {
+                          p.markRead(n);
+                          if (!n.canOpen) return;
+                          Navigator.of(context).pop(); // أغلق الورقة ثم انتقل
+                          AppNavigator.instance.request(n.isMention
+                              ? NavRequest.chat(n.conversationId!, message: n.messageId)
+                              : NavRequest.record(n.entityId!));
+                        },
                       );
                     },
                   ),

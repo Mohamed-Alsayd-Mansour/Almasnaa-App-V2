@@ -6,6 +6,7 @@ import '../../auth/app_user.dart';
 import '../../auth/auth_controller.dart';
 import '../../core/app_theme.dart';
 import '../../services/admin_api.dart';
+import 'archive_tab.dart';
 
 /// تبويب الأدمن: الحسابات، إسناد الإدخالات القديمة بلا مالك، كلمة مرور النسخ الاحتياطي.
 /// الصلاحيات مفروضة في الخادم؛ هذا التبويب لا يظهر لغير الأدمن.
@@ -16,7 +17,7 @@ class AdminScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     if (!context.read<AuthController>().isAdmin) return const SizedBox.shrink();
     return const DefaultTabController(
-      length: 3,
+      length: 4,
       child: Column(
         children: [
           Material(
@@ -27,6 +28,7 @@ class AdminScreen extends StatelessWidget {
                 Tab(text: 'الحسابات'),
                 Tab(text: 'إدخالات بلا مالك'),
                 Tab(text: 'كلمة مرور النسخ'),
+                Tab(text: 'الأرشفة'),
               ],
             ),
           ),
@@ -35,6 +37,7 @@ class AdminScreen extends StatelessWidget {
               _AccountsTab(),
               _OrphanEntriesTab(),
               _BackupPasswordTab(),
+              ArchiveTab(),
             ]),
           ),
         ],

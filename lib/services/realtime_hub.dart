@@ -22,6 +22,9 @@ class RealtimeHub extends ChangeNotifier {
     'rassas_supervisor_links',
     'app_settings',
     'notifications',
+    'chat_messages',
+    'chat_members',
+    'chat_conversations',
   ];
 
   SyncState state = SyncState.connecting;

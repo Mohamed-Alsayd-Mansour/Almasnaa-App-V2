@@ -216,6 +216,8 @@ class _RecordsScreenState extends State<RecordsScreen> {
                       Chip(label: Text('الشكل: ${provider.filters.shape!.label}')),
                     if (provider.filters.ownership != null)
                       Chip(label: Text('الملكية: ${provider.filters.ownership!.label}')),
+                    if (provider.filters.entryId != null)
+                      const Chip(label: Text('السجل المرتبط بالإشعار')),
                   ],
                 ),
               );

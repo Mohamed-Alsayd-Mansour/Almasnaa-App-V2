@@ -1,4 +1,5 @@
 import '../data/supa.dart';
+import '../data/view_scope.dart';
 import '../models/daily_session.dart';
 import '../models/enums.dart';
 
@@ -12,7 +13,8 @@ class DailySessionRepository {
         .order('date', ascending: false)
         .order('start_time', ascending: false)
         .range(from, to));
-    return rows.map((r) => DailySession.fromMap(fromServer(r))).toList();
+    final all = rows.map((r) => DailySession.fromMap(fromServer(r))).toList();
+    return ViewScope.filterSessions(all);
   }
 
   /// اليوميات المفتوحة (مختارة + معلّقة) الظاهرة للمستخدم حسب RLS.
