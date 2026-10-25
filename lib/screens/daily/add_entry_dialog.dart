@@ -10,6 +10,7 @@ import '../../utils/deficiency_calculator.dart';
 import '../../utils/platform_utils.dart';
 import '../../widgets/common_widgets.dart';
 import '../../widgets/person_dropdown.dart';
+import '../../widgets/read_only_name_field.dart';
 
 /// نافذة Form احترافية لإضافة غرفة إلى اليومية النشطة. تعرض عدد القطع
 /// تلقائيًا فور اختيار الغرفة من القائمة (قاعدة العمل #3)، وتحسب عدد
@@ -56,8 +57,6 @@ class _AddEntryDialogState extends State<AddEntryDialog> {
   final _numberingCtrl = TextEditingController();
   String? _carpenter;
   String? _service;
-  String? _installer;
-  String? _supervisor;
   String? _repairer;
   String? _wrapLocation;
   final _deficienciesCtrl = TextEditingController();
@@ -128,8 +127,6 @@ class _AddEntryDialogState extends State<AddEntryDialog> {
           numbering: _numberingCtrl.text,
           carpenter: _isExternal ? '' : (_carpenter ?? ''),
           service: _isExternal ? '' : (_service ?? ''),
-          installer: _isExternal ? '' : (_installer ?? ''),
-          supervisor: _isExternal ? '' : (_supervisor ?? ''),
           repairer: _isExternal ? '' : (_repairer ?? ''),
           deficiencies: _deficienciesCtrl.text,
           wrapLocation: _wrapLocation ?? '',
@@ -363,6 +360,16 @@ class _AddEntryDialogState extends State<AddEntryDialog> {
                 ),
                 const SizedBox(height: 14),
                 if (!_isExternal) ...[
+                // الرصيص والمشرف: من حسابَي اليومية الحالية، للعرض فقط (يفرضهما الخادم).
+                Builder(builder: (context) {
+                  final s = context.watch<DailyProvider>().activeSession;
+                  return Column(children: [
+                    ReadOnlyNameField(label: PersonRole.installer.fieldLabel, value: s?.rassasName ?? ''),
+                    const SizedBox(height: 14),
+                    ReadOnlyNameField(label: PersonRole.supervisor.fieldLabel, value: s?.supervisorName ?? ''),
+                    const SizedBox(height: 14),
+                  ]);
+                }),
                 PersonDropdownField(
                   role: PersonRole.carpenter,
                   required: true,

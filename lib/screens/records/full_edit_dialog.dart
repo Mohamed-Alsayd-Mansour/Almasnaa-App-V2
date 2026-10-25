@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
+import '../../auth/auth_controller.dart';
 import '../../utils/platform_utils.dart';
 import '../../models/daily_entry.dart';
 import '../../models/person.dart';
 import '../../utils/deficiency_calculator.dart';
 import '../../widgets/person_dropdown.dart';
+import '../../widgets/read_only_name_field.dart';
 
 /// نافذة التعديل الشامل على سجل واحد (بعد إدخال كلمة المرور). تُعدَّل كل
 /// الحقول، وتُعاد النسخة المعدَّلة أو null عند الإلغاء.
@@ -46,8 +49,8 @@ class _FullEditDialogState extends State<_FullEditDialog> {
 
   late String? _carpenter = _nullIfEmpty(e.carpenter);
   late String? _service = _nullIfEmpty(e.service);
-  late final String? _installer = _nullIfEmpty(e.installer);
-  late final String? _supervisor = _nullIfEmpty(e.supervisor);
+  late final _installerCtrl = TextEditingController(text: e.installer);
+  late final _supervisorCtrl = TextEditingController(text: e.supervisor);
   late String? _repairer = _nullIfEmpty(e.repairer);
   late String? _wrapLocation = _nullIfEmpty(e.wrapLocation);
   late bool _hasSpecs = e.hasSpecifications;
@@ -69,6 +72,8 @@ class _FullEditDialogState extends State<_FullEditDialog> {
       _partCountCtrl,
       _originalCtrl,
       _currentCtrl,
+      _installerCtrl,
+      _supervisorCtrl,
       _problemCtrl,
     ]) {
       c.dispose();
@@ -81,6 +86,8 @@ class _FullEditDialogState extends State<_FullEditDialog> {
     if (n == null || n < min) return 'أدخل عددًا صحيحًا ($min فأكثر)';
     return null;
   }
+
+  bool get _isAdmin => context.read<AuthController>().isAdmin;
 
   void _submit() {
     if (!_formKey.currentState!.validate()) return;
@@ -99,8 +106,9 @@ class _FullEditDialogState extends State<_FullEditDialog> {
       numbering: _numberingCtrl.text.trim(),
       carpenter: _carpenter ?? '',
       service: _service ?? '',
-      installer: _installer ?? '',
-      supervisor: _supervisor ?? '',
+      // اسم الرصيص/المشرف يعدّله الأدمن وحده (الخادم يرفض غيره)، فلا نرسله لغير الأدمن.
+      installer: _isAdmin ? _installerCtrl.text.trim() : null,
+      supervisor: _isAdmin ? _supervisorCtrl.text.trim() : null,
       repairer: _repairer ?? '',
       wrapLocation: _wrapLocation ?? '',
       hasSpecifications: specs,
@@ -201,6 +209,24 @@ class _FullEditDialogState extends State<_FullEditDialog> {
                           : null,
                 ),
                 _gap(),
+                if (!e.isExternal) ...[
+                  if (_isAdmin) ...[
+                    TextFormField(
+                      controller: _installerCtrl,
+                      decoration: InputDecoration(labelText: '${PersonRole.installer.fieldLabel} (أدمن فقط)'),
+                    ),
+                    _gap(),
+                    TextFormField(
+                      controller: _supervisorCtrl,
+                      decoration: InputDecoration(labelText: '${PersonRole.supervisor.fieldLabel} (أدمن فقط)'),
+                    ),
+                  ] else ...[
+                    ReadOnlyNameField(label: PersonRole.installer.fieldLabel, value: e.installer),
+                    _gap(),
+                    ReadOnlyNameField(label: PersonRole.supervisor.fieldLabel, value: e.supervisor),
+                  ],
+                  _gap(),
+                ],
                 PersonDropdownField(
                   role: PersonRole.carpenter,
                   value: _carpenter,

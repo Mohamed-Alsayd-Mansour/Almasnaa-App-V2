@@ -6,6 +6,7 @@ import '../../models/person.dart';
 import '../../providers/daily_provider.dart';
 import '../../widgets/common_widgets.dart';
 import '../../widgets/person_dropdown.dart';
+import '../../widgets/read_only_name_field.dart';
 
 /// نافذة تعديل الحقول التشغيلية لإدخال قائم في اليومية (لا تتضمن
 /// النواقص، التي تُعدَّل من خلية النواقص مباشرة أو من تبويب السجل).
@@ -29,8 +30,6 @@ class _EditEntryDialogState extends State<EditEntryDialog> {
       TextEditingController(text: widget.entry.numbering);
   late String? _carpenter = _nullIfEmpty(widget.entry.carpenter);
   late String? _service = _nullIfEmpty(widget.entry.service);
-  late final String? _installer = _nullIfEmpty(widget.entry.installer);
-  late final String? _supervisor = _nullIfEmpty(widget.entry.supervisor);
   late String? _repairer = _nullIfEmpty(widget.entry.repairer);
   late String? _wrapLocation = _nullIfEmpty(widget.entry.wrapLocation);
 
@@ -136,8 +135,6 @@ class _EditEntryDialogState extends State<EditEntryDialog> {
       numbering: _numberingCtrl.text.trim(),
       carpenter: _ext ? '' : (_carpenter ?? ''),
       service: _ext ? '' : (_service ?? ''),
-      installer: _ext ? '' : (_installer ?? ''),
-      supervisor: _ext ? '' : (_supervisor ?? ''),
       repairer: _ext ? '' : (_repairer ?? ''),
       wrapLocation: _wrapLocation ?? '',
       hasSpecifications: specs,
@@ -204,6 +201,11 @@ class _EditEntryDialogState extends State<EditEntryDialog> {
               ),
               const SizedBox(height: 14),
               if (!_ext) ...[
+              // الرصيص والمشرف: للعرض فقط؛ لا يعدّلهما إلا الأدمن (يفرض الخادم ذلك).
+              ReadOnlyNameField(label: PersonRole.installer.fieldLabel, value: widget.entry.installer),
+              const SizedBox(height: 14),
+              ReadOnlyNameField(label: PersonRole.supervisor.fieldLabel, value: widget.entry.supervisor),
+              const SizedBox(height: 14),
               PersonDropdownField(
                 role: PersonRole.carpenter,
                 value: _carpenter,

@@ -71,11 +71,19 @@ const _kGroupLogs = 'السجلات والتدقيق';
 const _kGroupReview = 'سجلات تحتاج إلى مراجعة';
 const _kOrphans = '__orphans__';
 
+// عناوين كل الأدوار (لعرض السجلات القديمة)، وخيارات الإضافة/التعديل بدون الرصيص والمشرف:
+// أسماؤهما تأتي من حسابات المستخدمين فقط، ويرفض الخادم إدخالها هنا.
 const _personRoles = {
   'service': 'خدمة',
   'carpenter': 'نجار',
   'installer': 'رصيص',
   'supervisor': 'مشرف',
+  'repairer': 'رميم',
+  'wrapLocation': 'مكان اللف',
+};
+const _editablePersonRoles = {
+  'service': 'خدمة',
+  'carpenter': 'نجار',
   'repairer': 'رميم',
   'wrapLocation': 'مكان اللف',
 };
@@ -119,14 +127,14 @@ const _tables = <_TableSpec>[
     ascending: true,
     fields: [
       _Field('name', 'الاسم', _Kind.text, required: true),
-      _Field('role', 'الدور', _Kind.choice, required: true, choices: _personRoles),
+      _Field('role', 'الدور', _Kind.choice, required: true, choices: _editablePersonRoles),
     ],
     canInsert: true,
     canEdit: true,
     canDelete: true,
     filterColumn: 'role',
     filterChoices: _personRoles,
-    note: 'الأسماء في الإدخالات القديمة نصوص محفوظة، فلا يغيّرها تعديل القائمة.',
+    note: 'الأسماء في الإدخالات القديمة نصوص محفوظة، فلا يغيّرها تعديل القائمة. أسماء الرصيص والمشرف تأتي من الحسابات ولا تُضاف هنا (الصفوف القديمة منها للحذف فقط).',
   ),
   _TableSpec(
     id: 'daily_sessions',
@@ -168,6 +176,8 @@ const _tables = <_TableSpec>[
       _Field('numbering', 'الترقيم', _Kind.text),
       _Field('carpenter', 'النجار', _Kind.text),
       _Field('service', 'الخدمة', _Kind.text),
+      _Field('installer', 'اسم الرصيص (أدمن فقط)', _Kind.text),
+      _Field('supervisor', 'اسم المشرف (أدمن فقط)', _Kind.text),
       _Field('repairer', 'الرميم', _Kind.text),
       _Field('wrap_location', 'مكان اللف', _Kind.text),
       _Field('merchant_name', 'التاجر', _Kind.text),
@@ -640,7 +650,8 @@ class _RowFormDialogState extends State<_RowFormDialog> {
         case _Kind.boolean:
           _values[f.key] = v == true;
         case _Kind.choice:
-          _values[f.key] = v;
+          // قيمة قديمة غير متاحة للاختيار (مثل رصيص/مشرف في قائمة الأسماء) تُترك فارغة ليختار الأدمن قيمة صالحة.
+          _values[f.key] = (v is String && f.choices!.containsKey(v)) ? v : null;
       }
     }
   }
