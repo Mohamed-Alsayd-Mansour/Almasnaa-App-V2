@@ -48,7 +48,6 @@ class _TableSpec {
     this.filterColumn,
     this.filterChoices,
     this.note,
-    this.defaults = const {},
   });
 
   final String id; // اسم الجدول
@@ -65,7 +64,6 @@ class _TableSpec {
   final String? filterColumn;
   final Map<String, String>? filterChoices;
   final String? note;
-  final Map<String, Object?> defaults;
 }
 
 const _kGroupOps = 'بيانات التشغيل';
@@ -330,7 +328,7 @@ class _DbManagementScreenState extends State<DbManagementScreen> {
     final values = await _showForm(spec, null);
     if (values == null) return;
     await _write(() async {
-      await supa.from(spec.id).insert({...spec.defaults, ...values});
+      await supa.from(spec.id).insert(values);
     }, 'تمت الإضافة.');
   }
 
