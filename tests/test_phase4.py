@@ -156,7 +156,8 @@ ok("admin is NOT an implicit member of private chats", cnt(ADMIN, "select count(
 # ---------------- admin "view as": audit shows real executor + target; ignored for non-admins
 sid = svc("select id from daily_sessions where rassas_id=%s and status<>'closed' limit 1", (MAN,))
 if not sid:
-    sid = [[as_user(MAN, "select change_supervisor(%s)", (QAD,), keep=True)[0][0][0]]]
+    as_user(MAN, "select change_supervisor(%s)", (QAD,), keep=True)
+    sid = [[as_user(MAN, "select create_session()", keep=True)[0][0][0]]]
 eid = svc("select id from daily_entries where rassas_id=%s limit 1", (MAN,))[0][0]
 as_user(ADMIN, "update daily_entries set problem='عرض كمستخدم' where id=%s", (eid,), keep=True, headers={"x-view-as": MAN})
 a = svc("select actor_id::text, actor_role::text, view_as_id::text, view_as_name from audit_log where entity='daily_entries' and entity_id=%s order by id desc limit 1", (str(eid),))[0]

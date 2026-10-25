@@ -1,7 +1,17 @@
 import 'dart:typed_data';
 
-/// نسخة الويب: FilePicker.saveFile نفسه يبدأ تنزيل الملف مباشرة عبر
-/// المتصفح بمجرد تمرير bytes، فلا حاجة لأي كتابة يدوية إضافية هنا.
-Future<void> writeBytesToPath(String path, Uint8List bytes) async {
-  // لا شيء مطلوب على الويب.
+/// نتيجة محاولة الحفظ: [saved] = false تعني أن المستخدم ألغى النافذة (ليس خطأ).
+class SaveResult {
+  const SaveResult({required this.saved});
+  final bool saved;
+}
+
+/// تنفيذ احتياطي لمنصة غير معروفة.
+Future<SaveResult> saveBytesAsFile({
+  required String fileName,
+  required Uint8List bytes,
+  String mimeType = 'application/octet-stream',
+  String dialogTitle = 'حفظ الملف',
+}) async {
+  throw UnsupportedError('حفظ الملفات غير مدعوم على هذه المنصة.');
 }

@@ -110,14 +110,14 @@ class DailyProvider extends ChangeNotifier {
     }
   }
 
-  /// الرصيص: فتح/استئناف يومية مع المشرف (لا تتكرر عند الضغط المتكرر).
-  Future<String?> openWithSupervisor(String supervisorId) async {
+  /// الرصيص: إنشاء يومية جديدة صراحةً مع مشرفه الحالي (لا تتكرر عند الضغط المتكرر).
+  Future<String?> createSession() async {
     try {
-      await _sessionRepository.openWithSupervisor(supervisorId);
+      await _sessionRepository.createSession();
       await load(silent: true);
       return null;
     } catch (e) {
-      return 'تعذر فتح اليومية: ${friendlyError(e)}';
+      return 'تعذر إنشاء اليومية: ${friendlyError(e)}';
     }
   }
 

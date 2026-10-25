@@ -3,8 +3,9 @@ import '../data/view_scope.dart';
 import '../models/daily_session.dart';
 import '../models/enums.dart';
 
-/// اليوميات على الخادم. إنشاء اليومية والتبديل والإغلاق تتم عبر دوال الخادم
-/// (change_supervisor / select_session / close_session) فهي ذرّية ولا تُكرِّر اليوميات.
+/// اليوميات على الخادم. الإنشاء (create_session) والتبديل (select_session) والإغلاق
+/// (close_session) تتم عبر دوال الخادم فهي ذرّية ولا تُكرِّر اليوميات. اختيار المشرف
+/// (change_supervisor) لا يُنشئ يومية.
 class DailySessionRepository {
   Future<List<DailySession>> getAllVisible() async {
     final rows = await fetchAll((from, to) => supa
@@ -47,10 +48,12 @@ class DailySessionRepository {
     await supa.rpc('close_session', params: {'p_session': id});
   }
 
-  /// الرصيص: فتح/استئناف يومية مع المشرف (تُنشأ جديدة فقط إن لم توجد مفتوحة).
-  Future<String> openWithSupervisor(String supervisorId, {String? rassasId}) async {
-    final res = await supa.rpc('change_supervisor', params: {
-      'p_supervisor': supervisorId,
+  /// إنشاء يومية جديدة صراحةً (الرصيص مع مشرفه الحالي، أو الأدمن لرصيص محدد).
+  /// هذا هو المسار الوحيد لإنشاء يومية. الخادم يعيد اليومية المفتوحة لنفس الثنائي
+  /// (رصيص + مشرف) إن وُجدت بدل تكرارها.
+  Future<String> createSession({String? supervisorId, String? rassasId}) async {
+    final res = await supa.rpc('create_session', params: {
+      if (supervisorId != null) 'p_supervisor': supervisorId,
       if (rassasId != null) 'p_rassas': rassasId,
     });
     return res as String;

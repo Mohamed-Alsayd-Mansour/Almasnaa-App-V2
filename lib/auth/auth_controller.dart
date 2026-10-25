@@ -243,7 +243,8 @@ class AuthController extends ChangeNotifier {
         .toList();
   }
 
-  /// يربط الرصيص بالمشرف ويفتح/يستأنف يوميته (عملية متكررة آمنة على الخادم).
+  /// يربط الرصيص بالمشرف ويستأنف يوميته المفتوحة معه إن وُجدت. لا يُنشئ يومية أبدًا:
+  /// إن لم توجد يومية مفتوحة يعيد الخادم null، وينشئها الرصيص صراحةً من تبويب اليومية.
   Future<String?> pickSupervisor(DirectoryUser supervisor) async {
     try {
       final sid = await _c.rpc('change_supervisor',

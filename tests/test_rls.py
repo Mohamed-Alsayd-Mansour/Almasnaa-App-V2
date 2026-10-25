@@ -95,8 +95,9 @@ ok("secrets unreachable", as_user(ADMIN, "select * from private.secrets")[1] is 
 # ---- links + multiple dailies
 ok("supervisor cannot call change_supervisor", as_user(QAD, "select change_supervisor(%s)", (SAY,))[1] is not None)
 ok("rassas cannot pick a non-supervisor", as_user(MAN, "select change_supervisor(%s)", (R2,))[1] is not None)
-s1 = as_user(MAN, "select change_supervisor(%s)", (SAY,), keep=True)[0][0][0]
-s1b = as_user(MAN, "select change_supervisor(%s)", (SAY,), keep=True)[0][0][0]
+as_user(MAN, "select change_supervisor(%s)", (SAY,), keep=True)
+s1 = as_user(MAN, "select create_session()", keep=True)[0][0][0]     # 0008: picking never creates; creation is explicit
+s1b = as_user(MAN, "select create_session()", keep=True)[0][0][0]
 ok("repeat change is idempotent (same daily, no duplicate)", s1 == s1b and svc("select count(*) from daily_sessions where rassas_id=%s and status in ('active','paused')", (MAN,))[0][0] == 1)
 conn.commit()
 ok("link now points to الصياد, history kept", svc("select count(*) from rassas_supervisor_links where rassas_id=%s", (MAN,))[0][0] == 2)
@@ -104,8 +105,9 @@ e_new = as_user(MAN, "insert into daily_entries(daily_session_id,room_name_snaps
 ok("entry insert: owner ids forced from daily (spoof ignored)", e_new[1] is None and svc("select rassas_id::text,supervisor_id::text,supervisor from daily_entries where id=%s", (e_new[0][0][0],))[0] == (MAN, SAY, "الصياد"))
 conn.commit()
 ok("الصياد now sees 2 entries + 2 dailies", n(SAY, "select count(*) from daily_entries") == 2 and n(SAY, "select count(*) from daily_sessions") == 2)
-s2 = as_user(MAN, "select change_supervisor(%s)", (QAD,), keep=True)[0][0][0]
-ok("switch back creates new daily for قدري; الصياد's daily is paused", s2 != s1 and svc("select status::text from daily_sessions where id=%s", (s1,))[0][0] == "paused" and svc("select status::text from daily_sessions where id=%s", (s2,))[0][0] == "active")
+as_user(MAN, "select change_supervisor(%s)", (QAD,), keep=True)
+s2 = as_user(MAN, "select create_session()", keep=True)[0][0][0]
+ok("switch back + explicit create makes a new daily for قدري; الصياد's daily is paused", s2 != s1 and svc("select status::text from daily_sessions where id=%s", (s1,))[0][0] == "paused" and svc("select status::text from daily_sessions where id=%s", (s2,))[0][0] == "active")
 conn.commit()
 ok("insert into paused daily rejected", as_user(MAN, "insert into daily_entries(daily_session_id) values (%s)", (s1,))[1] is not None)
 s3 = as_user(MAN, "select change_supervisor(%s)", (SAY,), keep=True)[0][0][0]
@@ -196,7 +198,7 @@ ok("re-assigning already-owned entries changes nothing", as_user(ADMIN, "select 
 ok("assigning to a non-supervisor is rejected", as_user(ADMIN, "select assign_entry_owner(%s::uuid[], %s, %s)", (orph[3:], MAN, R2))[1] is not None)
 
 # ---- 0005 / Phase 3: external rooms, idempotent client inserts, multi-daily behaviour used by the app
-sid = as_user(MAN, "select change_supervisor(%s)", (QAD,), keep=True)[0][0][0]; conn.commit()
+as_user(MAN, "select change_supervisor(%s)", (QAD,), keep=True); sid = as_user(MAN, "select create_session()", keep=True)[0][0][0]; conn.commit()
 ext = as_user(MAN, "insert into daily_entries(id,daily_session_id,room_name_snapshot,piece_count_snapshot,is_external,merchant_name,installer,supervisor) values ('11111111-1111-4111-8111-111111111111',%s,'خارجية',5,true,'تاجر','x','y')", (sid,), keep=True); conn.commit()
 ok("external entry: names stay blank (v1), ownership still set by id", ext[1] is None and svc("select installer,supervisor,rassas_id::text,supervisor_id::text from daily_entries where id='11111111-1111-4111-8111-111111111111'")[0] == ("", "", MAN, QAD))
 reg = as_user(MAN, "insert into daily_entries(id,daily_session_id,room_name_snapshot,piece_count_snapshot) values ('22222222-2222-4222-8222-222222222222',%s,'داخلية',9)", (sid,), keep=True); conn.commit()

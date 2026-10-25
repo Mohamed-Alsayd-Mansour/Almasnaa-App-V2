@@ -37,23 +37,23 @@ class _DailyScreenState extends State<DailyScreen> {
 
   bool _opening = false;
 
-  /// الرصيص: فتح/استئناف يومية مع مشرفه الحالي. الخادم يمنع تكرار اليومية.
-  Future<void> _openWithCurrentSupervisor() async {
+  /// الرصيص: إنشاء يومية جديدة مع مشرفه الحالي، بطلب صريح منه فقط.
+  /// الخادم يمنع تكرار اليومية المفتوحة لنفس الثنائي.
+  Future<void> _createWithCurrentSupervisor() async {
     if (_opening) return;
     final auth = context.read<AuthController>();
-    final supId = auth.currentSupervisorId;
-    if (supId == null) {
+    if (auth.currentSupervisorId == null) {
       showErrorSnackBar(context, 'اختر المشرف أولًا من الإعدادات ← الربط.');
       return;
     }
     setState(() => _opening = true);
-    final error = await context.read<DailyProvider>().openWithSupervisor(supId);
+    final error = await context.read<DailyProvider>().createSession();
     if (!mounted) return;
     setState(() => _opening = false);
     if (error != null) {
       showErrorSnackBar(context, error);
     } else {
-      showSuccessSnackBar(context, 'تم فتح اليومية.');
+      showSuccessSnackBar(context, 'تم إنشاء اليومية.');
     }
   }
 
@@ -180,14 +180,14 @@ class _DailyScreenState extends State<DailyScreen> {
                 title: 'لا توجد يومية مختارة',
                 subtitle: auth.isRassas
                     ? (provider.openSessions.isEmpty
-                        ? 'لا توجد يوميات مفتوحة. افتح يومية مع مشرفك الحالي.'
-                        : 'اختر إحدى يومياتك المعلّقة أعلاه، أو افتح يومية مع مشرفك الحالي.')
+                        ? 'لا توجد يوميات مفتوحة. أنشئ يومية جديدة مع مشرفك الحالي عند الحاجة.'
+                        : 'اختر إحدى يومياتك المعلّقة أعلاه، أو أنشئ يومية جديدة مع مشرفك الحالي.')
                     : 'لا توجد يوميات مفتوحة مسندة إليك حاليًا. اليوميات المغلقة في تبويب السجل.',
                 action: auth.isRassas
                     ? ElevatedButton.icon(
-                        onPressed: _opening ? null : _openWithCurrentSupervisor,
-                        icon: const Icon(Icons.play_arrow),
-                        label: Text('فتح يومية مع ${auth.currentSupervisorName ?? 'المشرف'}'),
+                        onPressed: _opening ? null : _createWithCurrentSupervisor,
+                        icon: const Icon(Icons.add),
+                        label: Text('إنشاء يومية جديدة مع ${auth.currentSupervisorName ?? 'المشرف'}'),
                       )
                     : null,
               ),

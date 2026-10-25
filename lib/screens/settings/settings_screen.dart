@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart' show kIsWeb, debugPrint;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -50,29 +51,32 @@ class _SettingsScreenState extends State<SettingsScreen> {
       final file = await _backup.export(password);
       final bytes = Uint8List.fromList(utf8.encode(file.json));
 
-      // نافذة الحفظ الأصلية (Android وiOS وWindows والويب). الاسم من الخادم:
-      // almasnaa-data-{الرصيص}-{المشرف}.json أو اسم نسخة كاملة للأدمن.
-      final path = await FilePicker.platform.saveFile(
-        dialogTitle: 'حفظ النسخة الاحتياطية',
+      // الحفظ حسب المنصة (file_saver): تنزيل مباشر من المتصفح على الويب، ونافذة الحفظ
+      // الأصلية على بقية المنصات. الاسم من الخادم: almasnaa-data-{الرصيص}-{المشرف}.json
+      // أو اسم نسخة كاملة للأدمن.
+      final result = await saveBytesAsFile(
         fileName: file.fileName,
-        type: FileType.custom,
-        allowedExtensions: const ['json'],
         bytes: bytes,
+        mimeType: 'application/json;charset=utf-8',
+        dialogTitle: 'حفظ النسخة الاحتياطية',
       );
-      // بعض منصات سطح المكتب تُعيد المسار دون كتابة الملف.
-      if (path != null) {
-        await writeBytesToPath(path, bytes);
-      }
       if (!mounted) return;
-      if (path == null) {
+      if (!result.saved) {
         showErrorSnackBar(context, 'تم إلغاء عملية الحفظ.');
         return;
       }
-      showSuccessSnackBar(context, 'تم حفظ النسخة الاحتياطية بنجاح.');
+      showSuccessSnackBar(context, kIsWeb
+          ? 'بدأ تنزيل النسخة الاحتياطية (${file.fileName}).'
+          : 'تم حفظ النسخة الاحتياطية بنجاح.');
     } on BackupException catch (e) {
       if (mounted) showErrorSnackBar(context, e.message);
-    } catch (e) {
-      if (mounted) showErrorSnackBar(context, 'حدث خطأ أثناء التصدير.');
+    } catch (e, st) {
+      // التفاصيل للتشخيص فقط (نوع الخطأ ورسالته ومساره). لا يُسجَّل المحتوى ولا كلمة المرور.
+      debugPrint('[export] ${e.runtimeType}: $e\n$st');
+      if (mounted) {
+        showErrorSnackBar(context,
+            'تعذر تصدير الملف (${e.runtimeType}). تحقق من اتصالك ومن السماح للموقع بالتنزيلات ثم أعد المحاولة.');
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }
